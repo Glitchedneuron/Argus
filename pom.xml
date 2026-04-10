@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.argus</groupId>
+    <artifactId>argus-logging-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Argus Logging Framework</name>
+    <description>
+        Structured, contract-first logging framework built on OpenTelemetry Logs Bridge API.
+        A YAML contract is the single source of truth; a Maven plugin converts it to Java 21
+        records at build time. At runtime the records are emitted via the OTel SDK — to an
+        OTLP/HTTP collector (Datadog agent, OTel Collector) in production, or to a pretty
+        console in dev when OTEL_EXPORTER_OTLP_ENDPOINT is absent.
+    </description>
+
+    <!--
+        BUILD ORDER
+        ===========
+        Modules are declared in dependency order so that `mvn install` from this
+        parent works in a single pass:
+
+          1. argus-logging-codegen  – the Maven plugin (must be installed first)
+          2. argus-logging-core     – the runtime jar
+          3. argus-logging-example  – uses the plugin + the runtime jar
+
+        First-time build: `mvn install` (not just `mvn package`) so the codegen
+        plugin is available to the example module's generate-sources phase.
+    -->
+    <modules>
+        <module>argus-logging-codegen</module>
+        <module>argus-logging-core</module>
+        <module>argus-logging-example</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- OpenTelemetry -->
+        <otel.version>1.38.0</otel.version>
+
+        <!-- Codegen plugin deps -->
+        <snakeyaml.version>2.2</snakeyaml.version>
+        <maven.plugin.api.version>3.9.6</maven.plugin.api.version>
+        <maven.plugin.annotations.version>3.13.0</maven.plugin.annotations.version>
+        <maven.core.version>3.9.6</maven.core.version>
+
+        <!-- Build plugins -->
+        <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
+        <maven.plugin.plugin.version>3.13.0</maven.plugin.plugin.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- OTel BOM — pins all io.opentelemetry:* versions -->
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-bom</artifactId>
+                <version>${otel.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Internal modules -->
+            <dependency>
+                <groupId>com.argus</groupId>
+                <artifactId>argus-logging-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>${maven.compiler.plugin.version}</version>
+                    <configuration>
+                        <source>${java.version}</source>
+                        <target>${java.version}</target>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-plugin-plugin</artifactId>
+                    <version>${maven.plugin.plugin.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

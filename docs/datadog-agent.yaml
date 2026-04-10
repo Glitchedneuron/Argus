@@ -1,0 +1,59 @@
+# ============================================================
+# Datadog Agent — OTLP ingestion configuration reference
+#
+# Place relevant sections in /etc/datadog-agent/datadog.yaml
+# (or the equivalent path for your install method).
+#
+# Argus ships logs via OTLP/HTTP (port 4318 by default).
+# Set OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 in
+# your service environment to activate the OTLP exporter.
+# ============================================================
+
+# -- Basic agent settings -----------------------------------
+api_key: <DD_API_KEY>
+site: datadoghq.com   # or datadoghq.eu, etc.
+
+# Required: enable log collection
+logs_enabled: true
+
+# -- OTLP receiver ------------------------------------------
+# Listens for logs (and optionally traces/metrics) from your
+# services.  HTTP on 4318, gRPC on 4317.
+otlp_config:
+  receiver:
+    protocols:
+      http:
+        endpoint: "0.0.0.0:4318"   # <- OTEL_EXPORTER_OTLP_ENDPOINT target
+      grpc:
+        endpoint: "0.0.0.0:4317"   # optional, needs grpc dep in argus-logging-core
+  logs:
+    enabled: true
+
+# -- Attribute mapping notes --------------------------------
+# The Datadog agent maps the following OTel resource attributes
+# to Datadog reserved fields automatically:
+#
+#   OTel resource attribute          Datadog field
+#   ─────────────────────────────    ─────────────────────────
+#   service.name                  -> service
+#   service.version               -> version
+#   deployment.environment.name   -> env
+#
+# These are set by ArgusLoggerFactory.Builder and read from
+# OTEL_SERVICE_NAME / OTEL_SERVICE_VERSION / DEPLOYMENT_ENVIRONMENT.
+#
+# -- Trace correlation --------------------------------------
+# When a log is emitted inside an active OTel span, the SDK
+# automatically attaches trace_id and span_id to the log record.
+# The Datadog agent converts the 128-bit OTel trace ID to the
+# Datadog 64-bit format, enabling seamless log-trace correlation
+# in the Datadog UI — no extra code required.
+#
+# -- Log pipeline / parsing ---------------------------------
+# Argus log bodies follow a fixed structure defined in the
+# YAML contract.  In Datadog, use a Grok parser pipeline
+# with patterns matching the body templates in log-contract.yaml
+# if you want to promote body fragments to facets.
+# All structured data is already available as log attributes
+# (from the OTel Attributes on the record) so Grok parsing of
+# the body is optional.

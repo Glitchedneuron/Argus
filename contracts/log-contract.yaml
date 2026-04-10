@@ -1,0 +1,272 @@
+# ============================================================
+# Argus Log Contract  —  source of truth for all structured log events.
+#
+# RULES
+#   • Add events here first; the Maven codegen plugin generates the Java records.
+#   • Never define ad-hoc log calls in application code.
+#   • Attribute names follow OpenTelemetry semantic conventions (dot-separated).
+#   • Enums are per-domain; use the narrowest applicable outcome for each event.
+#   • String fields without an explicit max_length default to string_limits.default_max_length.
+#   • Required fields that are null at emit-time cause an IllegalArgumentException.
+#   • Optional string fields that exceed max_length are silently truncated.
+# ============================================================
+
+version: "1.0"
+namespace: "com.argus.logging.events"
+
+string_limits:
+  default_max_length: 512    # applied to every string field with no explicit max_length
+  override_max_length: 4096  # explicit max_length values must not exceed this
+
+# ============================================================
+# PER-DOMAIN OUTCOME ENUMS
+# ============================================================
+enums:
+
+  HttpOutcome:
+    description: "Outcome of an inbound or outbound HTTP request"
+    values: [SUCCESS, CLIENT_ERROR, SERVER_ERROR, TIMEOUT, UNKNOWN]
+
+  DataOutcome:
+    description: "Outcome of a data-store or cache operation"
+    values: [SUCCESS, FAILURE, NOT_FOUND, CACHE_HIT, CACHE_MISS]
+
+  AsyncOutcome:
+    description: "Outcome of async / event-driven message processing"
+    values: [SUCCESS, FAILURE, SKIPPED, RETRIED, DEAD_LETTERED]
+
+  BusinessOutcome:
+    description: "Outcome of a business-logic step or workflow node"
+    values: [SUCCESS, FAILURE, PARTIAL, REJECTED, DEFERRED]
+
+# ============================================================
+# EVENTS
+# Keys are the canonical OTel event names (dot-separated, past tense).
+# Each event generates one Java record that implements LogEvent.
+# ============================================================
+events:
+
+  # ----------------------------------------------------------
+  # HTTP / REST
+  # ----------------------------------------------------------
+  http.request.completed:
+    severity: INFO
+    description: "An inbound or outbound HTTP request completed"
+    body: "{http.method} {http.route} -> {http.response.status_code} [{outcome}] in {duration.ms}ms"
+    attributes:
+      http.method:
+        type: string
+        required: true
+        max_length: 10
+      http.route:
+        type: string
+        required: true
+        max_length: 256
+      http.response.status_code:
+        type: int
+        required: true
+      duration.ms:
+        type: long
+        required: true
+      outcome:
+        type: enum
+        enum: HttpOutcome
+        required: true
+      outcome.reason:
+        type: string
+        max_length: 512
+      error.type:
+        type: string
+        max_length: 128
+
+  http.client.request.completed:
+    severity: INFO
+    description: "An outbound HTTP call to an upstream service completed"
+    body: "{http.method} {server.address} {http.route} -> {http.response.status_code} [{outcome}] in {duration.ms}ms"
+    attributes:
+      http.method:
+        type: string
+        required: true
+        max_length: 10
+      server.address:
+        type: string
+        required: true
+        max_length: 256
+      http.route:
+        type: string
+        required: true
+        max_length: 256
+      http.response.status_code:
+        type: int
+        required: true
+      duration.ms:
+        type: long
+        required: true
+      outcome:
+        type: enum
+        enum: HttpOutcome
+        required: true
+      outcome.reason:
+        type: string
+        max_length: 512
+
+  # ----------------------------------------------------------
+  # ASYNC / EVENT-DRIVEN
+  # ----------------------------------------------------------
+  async.event.processed:
+    severity: INFO
+    description: "An async message or domain event was processed"
+    body: "Event {event.type} [{event.id}] from {event.source} -> {outcome}"
+    attributes:
+      event.type:
+        type: string
+        required: true
+        max_length: 128
+      event.source:
+        type: string
+        required: true
+        max_length: 128
+      event.id:
+        type: string
+        max_length: 64
+      outcome:
+        type: enum
+        enum: AsyncOutcome
+        required: true
+      outcome.reason:
+        type: string
+        max_length: 512
+      retry.count:
+        type: int
+      duration.ms:
+        type: long
+
+  async.event.published:
+    severity: INFO
+    description: "A domain event was published to a message broker"
+    body: "Published {event.type} [{event.id}] to {messaging.destination} [{outcome}]"
+    attributes:
+      event.type:
+        type: string
+        required: true
+        max_length: 128
+      event.id:
+        type: string
+        max_length: 64
+      messaging.destination:
+        type: string
+        required: true
+        max_length: 256
+      outcome:
+        type: enum
+        enum: AsyncOutcome
+        required: true
+      outcome.reason:
+        type: string
+        max_length: 512
+
+  # ----------------------------------------------------------
+  # DATABASE / CACHE
+  # ----------------------------------------------------------
+  db.operation.executed:
+    severity: DEBUG
+    description: "A database query or command was executed"
+    body: "{db.operation.name} on {db.collection.name} [{outcome}] in {duration.ms}ms"
+    attributes:
+      db.operation.name:
+        type: string
+        required: true
+        max_length: 64
+      db.collection.name:
+        type: string
+        required: true
+        max_length: 128
+      duration.ms:
+        type: long
+        required: true
+      rows.affected:
+        type: int
+      outcome:
+        type: enum
+        enum: DataOutcome
+        required: true
+      outcome.reason:
+        type: string
+        max_length: 512
+
+  cache.operation.result:
+    severity: DEBUG
+    description: "A cache read or write completed"
+    body: "Cache {cache.operation} [{cache.key.prefix}*] -> {outcome}"
+    attributes:
+      cache.operation:
+        type: string
+        required: true
+        max_length: 16
+      cache.key.prefix:
+        type: string
+        required: true
+        max_length: 128
+      outcome:
+        type: enum
+        enum: DataOutcome
+        required: true
+      duration.ms:
+        type: long
+
+  # ----------------------------------------------------------
+  # BUSINESS LOGIC
+  # ----------------------------------------------------------
+  business.step.completed:
+    severity: INFO
+    description: "A named business-logic step or workflow node completed"
+    body: "Step [{step.name}] in flow [{flow.name}] -> {outcome}"
+    attributes:
+      step.name:
+        type: string
+        required: true
+        max_length: 128
+      flow.name:
+        type: string
+        required: true
+        max_length: 128
+      entity.type:
+        type: string
+        max_length: 64
+      entity.id:
+        type: string
+        max_length: 64
+      outcome:
+        type: enum
+        enum: BusinessOutcome
+        required: true
+      outcome.reason:
+        type: string
+        max_length: 512
+      duration.ms:
+        type: long
+
+  business.rule.evaluated:
+    severity: DEBUG
+    description: "A business rule or policy was evaluated"
+    body: "Rule [{rule.name}] on {entity.type} [{entity.id}] -> {outcome}"
+    attributes:
+      rule.name:
+        type: string
+        required: true
+        max_length: 128
+      entity.type:
+        type: string
+        required: true
+        max_length: 64
+      entity.id:
+        type: string
+        required: true
+        max_length: 64
+      outcome:
+        type: enum
+        enum: BusinessOutcome
+        required: true
+      outcome.reason:
+        type: string
+        max_length: 512

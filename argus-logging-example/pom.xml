@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.argus</groupId>
+        <artifactId>argus-logging-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>argus-logging-example</artifactId>
+    <name>Argus Logging Example</name>
+    <description>
+        Demonstrates how a service uses the Argus logging framework:
+        1. The argus-logging-codegen plugin reads contracts/log-contract.yaml and generates
+           Java records into target/generated-sources/argus-logging during generate-sources.
+        2. The service code imports and emits those records via ArgusLogger.
+        3. In dev (no OTEL_EXPORTER_OTLP_ENDPOINT) logs go to the console.
+           In production the same code ships OTLP/HTTP to the Datadog agent on port 4318.
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.argus</groupId>
+            <artifactId>argus-logging-core</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+                Argus codegen plugin — runs in generate-sources, writes Java records.
+                NOTE: run `mvn install` from the parent root on first build so the
+                plugin is available in the local repository before this module builds.
+            -->
+            <plugin>
+                <groupId>com.argus</groupId>
+                <artifactId>argus-logging-codegen</artifactId>
+                <version>${project.version}</version>
+                <executions>
+                    <execution>
+                        <id>generate-log-events</id>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <configuration>
+                            <!--
+                                Point at the shared global contract.
+                                Services with their own domain events can extend this
+                                or use a local copy; the namespace controls the Java package.
+                            -->
+                            <contractFile>${project.basedir}/../contracts/log-contract.yaml</contractFile>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

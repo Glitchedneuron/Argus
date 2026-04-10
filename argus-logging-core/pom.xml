@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.argus</groupId>
+        <artifactId>argus-logging-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>argus-logging-core</artifactId>
+    <name>Argus Logging Core</name>
+    <description>
+        Runtime library.  Provides ArgusLoggerFactory, ArgusLogger, and the LogEvent interface
+        that generated records implement.  Ships logs via OTLP/HTTP when
+        OTEL_EXPORTER_OTLP_ENDPOINT is set; falls back to a pretty console exporter otherwise.
+    </description>
+
+    <dependencies>
+        <!-- OTel SDK: API + SDK + Logs Bridge -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk</artifactId>
+            <!-- version managed by BOM -->
+        </dependency>
+
+        <!-- OTLP exporters (HTTP/protobuf transport, no gRPC runtime required) -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+    </dependencies>
+</project>
