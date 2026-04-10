@@ -25,6 +25,8 @@ import java.io.StringWriter;
  *   <li>{@code service.name}, {@code service.version}, {@code deployment.environment.name}
  *       — OTel Resource attributes, set once in {@link ArgusLoggerFactory}.</li>
  *   <li>{@code trace_id}, {@code span_id} — propagated from the active OTel span.</li>
+ *   <li>{@code event.name} — canonical event name from the contract (e.g. {@code http.request.completed});
+ *       maps to the OTel log data model {@code EventName} field.</li>
  * </ul>
  */
 public final class ArgusLogger {
@@ -101,7 +103,12 @@ public final class ArgusLogger {
                 .setSeverity(event.severity())
                 .setSeverityText(event.severity().name())
                 .setBody(event.body())
-                .setAllAttributes(event.toAttributes());
+                .setAllAttributes(event.toAttributes())
+                // EventName — top-level OTel log data model field (data-model §EventName).
+                // Set as the event.name attribute per spec recommendation; the OTLP exporter
+                // and collectors (Datadog agent ≥ 7.53, OTel Collector ≥ 0.96) map this to
+                // the EventName field automatically.
+                .setAttribute(AttributeKey.stringKey("event.name"), event.eventName());
     }
 
     private static String stacktraceOf(Throwable t) {

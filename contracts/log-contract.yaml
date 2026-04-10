@@ -25,17 +25,22 @@ string_limits:
 # They are managed entirely by ArgusLogger / the OTel SDK — event definitions
 # must NOT redeclare them as attributes.
 #
-# Field             Source                          Notes
-# ──────────────── ─────────────────────────────── ────────────────────────────────────────
-# timestamp         OTel SDK (auto)                 Nanosecond epoch at emit() time.
-# observed_timestamp OTel SDK (auto)                Nanosecond epoch when SDK observed the record.
-# body              Event 'body' template           Rendered human-readable message string.
-# severity          Event 'severity' definition     OTel SeverityNumber + SeverityText (e.g. INFO / 9).
-# service.name      ArgusLoggerFactory / OTEL_SERVICE_NAME env           Resource attribute.
-# service.version   ArgusLoggerFactory / OTEL_SERVICE_VERSION env        Resource attribute.
-# deployment.environment.name  ArgusLoggerFactory / DEPLOYMENT_ENVIRONMENT env  Resource attribute.
-# trace_id          OTel SDK (from active span)     128-bit hex. Present when a span is active.
-# span_id           OTel SDK (from active span)     64-bit hex.  Present when a span is active.
+# Field                       Source                               Notes
+# ─────────────────────────── ──────────────────────────────────── ──────────────────────────────────────────
+# Timestamp                   OTel SDK (auto)                      Nanosecond epoch at emit() time.
+# ObservedTimestamp           OTel SDK (auto)                      Nanosecond epoch when SDK observed record.
+# TraceId                     OTel SDK (from active span)          128-bit. Present when a span is active.
+# SpanId                      OTel SDK (from active span)          64-bit.  Present when a span is active.
+# TraceFlags                  OTel SDK (from active span)          W3C trace flags byte.
+# SeverityNumber              Event 'severity' definition          Numeric level per OTel spec (DEBUG=5, INFO=9, WARN=13, ERROR=17).
+# SeverityText                Event 'severity' definition          Human-readable level string (e.g. INFO).
+# Body                        Event 'body' template                Rendered human-readable message (AnyValue/string).
+# event.name  [→ EventName]   Event key in this contract           Identifies the event class/type per data-model §EventName.
+#                                                                  Set as the event.name attribute; collectors map it to EventName.
+# service.name                ArgusLoggerFactory / OTEL_SERVICE_NAME env         Resource attribute.
+# service.version             ArgusLoggerFactory / OTEL_SERVICE_VERSION env      Resource attribute.
+# deployment.environment.name ArgusLoggerFactory / DEPLOYMENT_ENVIRONMENT env    Resource attribute.
+# InstrumentationScope        ArgusLoggerFactory (com.argus.logging)             Identifies the logging library.
 # ============================================================
 
 # ============================================================

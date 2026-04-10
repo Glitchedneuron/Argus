@@ -30,8 +30,8 @@ final class ConsoleLogRecordExporter implements LogRecordExporter {
     private static final DateTimeFormatter TIME_FMT =
             DateTimeFormatter.ofPattern("HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
 
-    private static final AttributeKey<String> SERVICE_NAME =
-            AttributeKey.stringKey("service.name");
+    private static final AttributeKey<String> SERVICE_NAME  = AttributeKey.stringKey("service.name");
+    private static final AttributeKey<String> EVENT_NAME    = AttributeKey.stringKey("event.name");
 
     static ConsoleLogRecordExporter create() {
         return new ConsoleLogRecordExporter();
@@ -85,19 +85,18 @@ final class ConsoleLogRecordExporter implements LogRecordExporter {
             sb.append("  service=").append(service).append('\n');
         }
 
-        // Attributes (one per line, indented)
-        log.getAttributes().forEach((k, v) ->
-                sb.append("  ").append(k.getKey()).append('=').append(v).append('\n'));
+        // Attributes — skip event.name (already shown in the header line)
+        log.getAttributes().forEach((k, v) -> {
+            if (!EVENT_NAME.equals(k)) {
+                sb.append("  ").append(k.getKey()).append('=').append(v).append('\n');
+            }
+        });
 
         System.out.print(sb);
     }
 
     private static String eventName(LogRecordData log) {
-        // Generated records embed their event name as an attribute; fall back to scope name.
-        String fromAttr = log.getAttributes().get(AttributeKey.stringKey("event.name"));
-        if (fromAttr != null) return fromAttr;
-        String scope = log.getInstrumentationScopeInfo().getName();
-        return scope != null ? scope : "unknown";
+        return log.getAttributes().get(EVENT_NAME);
     }
 
     @SuppressWarnings("unchecked")
