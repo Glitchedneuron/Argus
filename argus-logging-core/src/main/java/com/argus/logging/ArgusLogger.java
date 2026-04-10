@@ -6,6 +6,7 @@ import io.opentelemetry.api.logs.Logger;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.time.Instant;
 
 /**
  * Thin wrapper around an OTel {@link Logger} that accepts {@link LogEvent} instances.
@@ -100,6 +101,9 @@ public final class ArgusLogger {
 
     private LogRecordBuilder buildBase(LogEvent event) {
         return otelLogger.logRecordBuilder()
+                // Timestamp must be set explicitly — the SDK only auto-sets ObservedTimestamp.
+                // Without this call the Timestamp field remains at epoch 1970.
+                .setTimestamp(Instant.now())
                 .setSeverity(event.severity())
                 .setSeverityText(event.severity().name())
                 .setBody(event.body())

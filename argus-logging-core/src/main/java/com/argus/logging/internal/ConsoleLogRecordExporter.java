@@ -1,37 +1,61 @@
 package com.argus.logging.internal;
 
 import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.AttributeType;
 import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.sdk.logs.data.LogRecordData;
 import io.opentelemetry.sdk.logs.export.LogRecordExporter;
 
 import java.time.Instant;
-import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Collection;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Development-mode log exporter that writes human-readable output to stdout.
+ * Development-mode log exporter that writes one JSON object per log record to stdout.
  *
- * <p>Not intended for production use — the OTel SDK selects this exporter automatically
- * when {@code OTEL_EXPORTER_OTLP_ENDPOINT} is absent (see {@link OtelInitializer}).</p>
+ * <p>The JSON structure follows the OTel Log Data Model fields:
+ * <a href="https://opentelemetry.io/docs/specs/otel/logs/data-model/">OTel Log Data Model</a></p>
+ *
+ * <p>Not intended for production use — selected automatically when
+ * {@code OTEL_EXPORTER_OTLP_ENDPOINT} is absent (see {@link OtelInitializer}).</p>
  *
  * <p>Example output:</p>
  * <pre>
- * [14:32:01.042] INFO  http.request.completed
- *   GET /api/orders -> 200 [SUCCESS] in 37ms
- *   service=order-service  trace=4bf92f3577b34da6a3ce929d0e0e4736  span=a3ce929d0e0e4736
- *   http.method=GET  http.route=/api/orders  http.response.status_code=200
- *   duration.ms=37  outcome=SUCCESS
+ * {
+ *   "timestamp": "2026-04-10T14:32:01.042Z",
+ *   "severity_number": 9,
+ *   "severity_text": "INFO",
+ *   "event_name": "http.request.completed",
+ *   "body": "GET /api/orders/{id} -> 200 [SUCCESS] in 38ms",
+ *   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+ *   "span_id": "a3ce929d0e0e4736",
+ *   "trace_flags": "01",
+ *   "resource": {
+ *     "service.name": "example-service",
+ *     "service.version": "1.0.0",
+ *     "deployment.environment.name": "development"
+ *   },
+ *   "instrumentation_scope": {
+ *     "name": "com.argus.logging",
+ *     "version": "1.0.0"
+ *   },
+ *   "attributes": {
+ *     "http.method": "GET",
+ *     "http.route": "/api/orders/{id}",
+ *     "http.response.status_code": 200,
+ *     "duration.ms": 38,
+ *     "outcome": "SUCCESS"
+ *   }
+ * }
  * </pre>
  */
 final class ConsoleLogRecordExporter implements LogRecordExporter {
 
-    private static final DateTimeFormatter TIME_FMT =
-            DateTimeFormatter.ofPattern("HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
+    private static final DateTimeFormatter ISO_FMT = DateTimeFormatter.ISO_INSTANT.withZone(ZoneOffset.UTC);
 
-    private static final AttributeKey<String> SERVICE_NAME  = AttributeKey.stringKey("service.name");
-    private static final AttributeKey<String> EVENT_NAME    = AttributeKey.stringKey("event.name");
+    private static final AttributeKey<String> EVENT_NAME = AttributeKey.stringKey("event.name");
 
     static ConsoleLogRecordExporter create() {
         return new ConsoleLogRecordExporter();
@@ -58,59 +82,112 @@ final class ConsoleLogRecordExporter implements LogRecordExporter {
     // -------------------------------------------------------------------------
 
     private void print(LogRecordData log) {
-        String time = TIME_FMT.format(Instant.ofEpochSecond(0L, log.getTimestampEpochNanos()));
-        String severity = padRight(log.getSeverityText() != null ? log.getSeverityText() : "?", 5);
-        String eventName = eventName(log);
+        StringBuilder sb = new StringBuilder(512);
+        sb.append("{\n");
+
+        // timestamp — from the explicit setTimestamp() call in ArgusLogger.buildBase()
+        long epochNanos = log.getTimestampEpochNanos();
+        String timestamp = epochNanos == 0
+                ? "null"
+                : quoted(ISO_FMT.format(Instant.ofEpochSecond(epochNanos / 1_000_000_000L,
+                                                               epochNanos % 1_000_000_000L)));
+        sb.append("  \"timestamp\": ").append(timestamp).append(",\n");
+
+        // observed_timestamp — set by the SDK automatically
+        long obsNanos = log.getObservedTimestampEpochNanos();
+        String obsTimestamp = obsNanos == 0
+                ? "null"
+                : quoted(ISO_FMT.format(Instant.ofEpochSecond(obsNanos / 1_000_000_000L,
+                                                               obsNanos % 1_000_000_000L)));
+        sb.append("  \"observed_timestamp\": ").append(obsTimestamp).append(",\n");
+
+        // severity_number / severity_text
+        int severityNum = log.getSeverity() != null ? log.getSeverity().getSeverityNumber() : 0;
+        sb.append("  \"severity_number\": ").append(severityNum).append(",\n");
+        sb.append("  \"severity_text\": ")
+          .append(log.getSeverityText() != null ? quoted(log.getSeverityText()) : "null")
+          .append(",\n");
+
+        // event_name — from the event.name attribute (maps to OTel EventName field)
+        String eventName = log.getAttributes().get(EVENT_NAME);
+        sb.append("  \"event_name\": ")
+          .append(eventName != null ? quoted(eventName) : "null")
+          .append(",\n");
+
+        // body
         String body = bodyString(log);
-        String service = log.getResource().getAttribute(SERVICE_NAME);
+        sb.append("  \"body\": ").append(quoted(body)).append(",\n");
 
-        StringBuilder sb = new StringBuilder(256);
-
-        // Header line
-        sb.append('[').append(time).append("] ")
-          .append(severity).append(' ')
-          .append(eventName).append('\n');
-
-        // Body
-        sb.append("  ").append(body).append('\n');
-
-        // Trace context
+        // trace context
         var spanCtx = log.getSpanContext();
         if (spanCtx != null && spanCtx.isValid()) {
-            sb.append("  service=").append(service != null ? service : "?")
-              .append("  trace=").append(spanCtx.getTraceId())
-              .append("  span=").append(spanCtx.getSpanId())
-              .append('\n');
-        } else if (service != null) {
-            sb.append("  service=").append(service).append('\n');
+            sb.append("  \"trace_id\": ").append(quoted(spanCtx.getTraceId())).append(",\n");
+            sb.append("  \"span_id\": ").append(quoted(spanCtx.getSpanId())).append(",\n");
+            sb.append("  \"trace_flags\": ")
+              .append(quoted(String.format("%02x", spanCtx.getTraceFlags().asByte())))
+              .append(",\n");
+        } else {
+            sb.append("  \"trace_id\": null,\n");
+            sb.append("  \"span_id\": null,\n");
+            sb.append("  \"trace_flags\": null,\n");
         }
 
-        // Attributes — skip event.name (already shown in the header line)
-        log.getAttributes().forEach((k, v) -> {
-            if (!EVENT_NAME.equals(k)) {
-                sb.append("  ").append(k.getKey()).append('=').append(v).append('\n');
-            }
+        // resource attributes
+        sb.append("  \"resource\": {\n");
+        AtomicBoolean firstResource = new AtomicBoolean(true);
+        log.getResource().getAttributes().forEach((k, v) -> {
+            if (!firstResource.getAndSet(false)) sb.append(",\n");
+            sb.append("    ").append(quoted(k.getKey())).append(": ").append(jsonValue(k, v));
         });
+        sb.append("\n  },\n");
 
-        System.out.print(sb);
+        // instrumentation scope
+        var scope = log.getInstrumentationScopeInfo();
+        sb.append("  \"instrumentation_scope\": {\n");
+        sb.append("    \"name\": ").append(quoted(scope.getName()));
+        if (scope.getVersion() != null) {
+            sb.append(",\n    \"version\": ").append(quoted(scope.getVersion()));
+        }
+        sb.append("\n  },\n");
+
+        // attributes — skip event.name (already surfaced as event_name above)
+        sb.append("  \"attributes\": {\n");
+        AtomicBoolean firstAttr = new AtomicBoolean(true);
+        log.getAttributes().forEach((k, v) -> {
+            if (EVENT_NAME.equals(k)) return;
+            if (!firstAttr.getAndSet(false)) sb.append(",\n");
+            sb.append("    ").append(quoted(k.getKey())).append(": ").append(jsonValue(k, v));
+        });
+        sb.append("\n  }\n");
+
+        sb.append("}");
+
+        System.out.println(sb);
     }
 
-    private static String eventName(LogRecordData log) {
-        return log.getAttributes().get(EVENT_NAME);
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static String jsonValue(AttributeKey key, Object value) {
+        AttributeType type = key.getType();
+        return switch (type) {
+            case LONG, DOUBLE, BOOLEAN -> String.valueOf(value);
+            default -> quoted(String.valueOf(value));
+        };
     }
 
-    @SuppressWarnings("unchecked")
     private static String bodyString(LogRecordData log) {
-        // getBodyValue() returns AnyValue<?>; getValue() returns the underlying value.
-        // For string bodies this is a String; toString() is safe for other types.
         var body = log.getBodyValue();
         if (body == null) return "";
         Object value = body.getValue();
         return value != null ? value.toString() : "";
     }
 
-    private static String padRight(String s, int width) {
-        if (s.length() >= width) return s;
-        return s + " ".repeat(width - s.length());
+    private static String quoted(String s) {
+        // Minimal JSON string escaping for control characters and quotes.
+        return "\"" + s.replace("\\", "\\\\")
+                       .replace("\"", "\\\"")
+                       .replace("\n", "\\n")
+                       .replace("\r", "\\r")
+                       .replace("\t", "\\t")
+               + "\"";
     }
 }
