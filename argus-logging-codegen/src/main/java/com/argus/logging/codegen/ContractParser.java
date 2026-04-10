@@ -57,6 +57,17 @@ final class ContractParser {
             contract.setEnums(enums);
         }
 
+        // error_envelope — optional attributes auto-injected into ERROR/WARN events
+        Map<String, Object> errorEnvelopeYaml = (Map<String, Object>) root.get("error_envelope");
+        if (errorEnvelopeYaml != null) {
+            Map<String, AttributeDefinition> errorEnvelope = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> entry : errorEnvelopeYaml.entrySet()) {
+                errorEnvelope.put(entry.getKey(),
+                        parseAttribute(entry.getKey(), (Map<String, Object>) entry.getValue()));
+            }
+            contract.setErrorEnvelope(errorEnvelope);
+        }
+
         // events
         Map<String, Object> eventsYaml = (Map<String, Object>) root.get("events");
         if (eventsYaml != null) {

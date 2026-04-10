@@ -12,6 +12,13 @@ public final class LogContract {
     private Map<String, EnumDefinition> enums = new LinkedHashMap<>();
     private Map<String, EventDefinition> events = new LinkedHashMap<>();
 
+    /**
+     * Attributes from the {@code error_envelope} section.
+     * Automatically appended to every event with severity ERROR or WARN by the codegen.
+     * At runtime, {@code ArgusLogger.emit(event, throwable)} populates them from the exception.
+     */
+    private Map<String, AttributeDefinition> errorEnvelope = new LinkedHashMap<>();
+
     public String getVersion() { return version; }
     public void setVersion(String version) { this.version = version; }
 
@@ -26,4 +33,9 @@ public final class LogContract {
 
     public Map<String, EventDefinition> getEvents() { return events; }
     public void setEvents(Map<String, EventDefinition> events) { this.events = events; }
+
+    public Map<String, AttributeDefinition> getErrorEnvelope() { return errorEnvelope; }
+    public void setErrorEnvelope(Map<String, AttributeDefinition> errorEnvelope) {
+        this.errorEnvelope = errorEnvelope;
+    }
 }

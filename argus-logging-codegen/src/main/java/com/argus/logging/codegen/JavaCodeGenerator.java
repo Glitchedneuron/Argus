@@ -102,6 +102,17 @@ final class JavaCodeGenerator {
         List<Map.Entry<String, AttributeDefinition>> attrList = new ArrayList<>(attributes.entrySet());
         StringLimits limits = contract.getStringLimits();
 
+        // Inject error_envelope fields for ERROR / WARN severity events.
+        // Only fields not already defined in the event's own attribute list are appended.
+        String sev = event.getSeverity();
+        if (("ERROR".equals(sev) || "WARN".equals(sev)) && !contract.getErrorEnvelope().isEmpty()) {
+            for (Map.Entry<String, AttributeDefinition> envEntry : contract.getErrorEnvelope().entrySet()) {
+                if (!attributes.containsKey(envEntry.getKey())) {
+                    attrList.add(envEntry);
+                }
+            }
+        }
+
         StringBuilder sb = new StringBuilder(2048);
 
         // Package + imports
@@ -121,6 +132,11 @@ final class JavaCodeGenerator {
         }
         sb.append(" * <p>Event name: {@code ").append(event.getEventName()).append("}</p>\n");
         sb.append(" * <p>Severity: ").append(event.getSeverity()).append("</p>\n");
+        if ("ERROR".equals(event.getSeverity()) || "WARN".equals(event.getSeverity())) {
+            sb.append(" * <p>Error envelope fields ({@code exception.*}, {@code error.type}) are included\n");
+            sb.append(" * as optional components. Pass a {@link Throwable} to\n");
+            sb.append(" * {@code ArgusLogger.emit(event, throwable)} to populate them automatically.</p>\n");
+        }
         if (!event.getContext().isEmpty()) {
             sb.append(" * <p>Ambient context (propagated by OTel SDK): ")
               .append(String.join(", ", event.getContext())).append("</p>\n");

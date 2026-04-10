@@ -19,6 +19,59 @@ string_limits:
   override_max_length: 4096  # explicit max_length values must not exceed this
 
 # ============================================================
+# MANDATORY OTel LOG RECORD ENVELOPE
+#
+# These fields are present on EVERY log record emitted by this framework.
+# They are managed entirely by ArgusLogger / the OTel SDK — event definitions
+# must NOT redeclare them as attributes.
+#
+# Field             Source                          Notes
+# ──────────────── ─────────────────────────────── ────────────────────────────────────────
+# timestamp         OTel SDK (auto)                 Nanosecond epoch at emit() time.
+# observed_timestamp OTel SDK (auto)                Nanosecond epoch when SDK observed the record.
+# body              Event 'body' template           Rendered human-readable message string.
+# severity          Event 'severity' definition     OTel SeverityNumber + SeverityText (e.g. INFO / 9).
+# service.name      ArgusLoggerFactory / OTEL_SERVICE_NAME env           Resource attribute.
+# service.version   ArgusLoggerFactory / OTEL_SERVICE_VERSION env        Resource attribute.
+# deployment.environment.name  ArgusLoggerFactory / DEPLOYMENT_ENVIRONMENT env  Resource attribute.
+# trace_id          OTel SDK (from active span)     128-bit hex. Present when a span is active.
+# span_id           OTel SDK (from active span)     64-bit hex.  Present when a span is active.
+# ============================================================
+
+# ============================================================
+# ERROR ENVELOPE
+#
+# Automatically appended as OPTIONAL fields to every event with severity ERROR or WARN.
+# The codegen plugin injects these into the generated record so callers can pass them
+# directly, or use ArgusLogger.emit(event, throwable) to have the framework extract
+# them from the exception automatically.
+#
+# Attribute             Type    max_length  Description
+# ─────────────────────────────────────────────────────────────────────────────
+# exception.type        string     256      FQCN of the exception class.
+# exception.message     string    4096      Throwable.getMessage() value.
+# exception.stacktrace  string    4096      Full stack trace. Truncated at limit.
+# error.type            string     128      Short category for grouping / alerting.
+# ============================================================
+error_envelope:
+  exception.type:
+    type: string
+    description: "Fully-qualified class name of the thrown exception (e.g. java.net.SocketTimeoutException)."
+    max_length: 256
+  exception.message:
+    type: string
+    description: "Exception message returned by Throwable.getMessage()."
+    max_length: 4096
+  exception.stacktrace:
+    type: string
+    description: "Full stack trace as a string. Truncated to max_length when necessary."
+    max_length: 4096
+  error.type:
+    type: string
+    description: "Short error category used for grouping and alerting (e.g. TimeoutError, ValidationError)."
+    max_length: 128
+
+# ============================================================
 # PER-DOMAIN OUTCOME ENUMS
 # ============================================================
 enums:
@@ -43,15 +96,18 @@ enums:
 # EVENTS
 # Keys are the canonical OTel event names (dot-separated, past tense).
 # Each event generates one Java record that implements LogEvent.
+#
+# severity: INFO | DEBUG | WARN | ERROR
+#   ERROR events automatically receive the error_envelope fields (see above).
 # ============================================================
 events:
 
   # ----------------------------------------------------------
-  # HTTP / REST
+  # HTTP / REST — INFO (normal completion)
   # ----------------------------------------------------------
   http.request.completed:
     severity: INFO
-    description: "An inbound or outbound HTTP request completed"
+    description: "An inbound or outbound HTTP request completed normally"
     body: "{http.method} {http.route} -> {http.response.status_code} [{outcome}] in {duration.ms}ms"
     attributes:
       http.method:
@@ -75,14 +131,11 @@ events:
       outcome.reason:
         type: string
         max_length: 512
-      error.type:
-        type: string
-        max_length: 128
 
   http.client.request.completed:
     severity: INFO
-    description: "An outbound HTTP call to an upstream service completed"
-    body: "{http.method} {server.address} {http.route} -> {http.response.status_code} [{outcome}] in {duration.ms}ms"
+    description: "An outbound HTTP call to an upstream service completed normally"
+    body: "{http.method} {server.address}{http.route} -> {http.response.status_code} [{outcome}] in {duration.ms}ms"
     attributes:
       http.method:
         type: string
@@ -111,7 +164,36 @@ events:
         max_length: 512
 
   # ----------------------------------------------------------
-  # ASYNC / EVENT-DRIVEN
+  # HTTP / REST — ERROR (unhandled failure)
+  # error_envelope fields (exception.*) are auto-injected by codegen.
+  # ----------------------------------------------------------
+  http.request.failed:
+    severity: ERROR
+    description: "An HTTP request failed with an unhandled exception or fatal error"
+    body: "{http.method} {http.route} FAILED [{outcome}] after {duration.ms}ms — {error.type}"
+    attributes:
+      http.method:
+        type: string
+        required: true
+        max_length: 10
+      http.route:
+        type: string
+        required: true
+        max_length: 256
+      duration.ms:
+        type: long
+        required: true
+      outcome:
+        type: enum
+        enum: HttpOutcome
+        required: true
+      error.type:
+        type: string
+        required: true
+        max_length: 128
+
+  # ----------------------------------------------------------
+  # ASYNC / EVENT-DRIVEN — INFO
   # ----------------------------------------------------------
   async.event.processed:
     severity: INFO
@@ -166,7 +248,33 @@ events:
         max_length: 512
 
   # ----------------------------------------------------------
-  # DATABASE / CACHE
+  # ASYNC / EVENT-DRIVEN — ERROR
+  # ----------------------------------------------------------
+  async.event.failed:
+    severity: ERROR
+    description: "An async event could not be processed and will not be retried"
+    body: "Event {event.type} [{event.id}] from {event.source} FAILED — {error.type}"
+    attributes:
+      event.type:
+        type: string
+        required: true
+        max_length: 128
+      event.source:
+        type: string
+        required: true
+        max_length: 128
+      event.id:
+        type: string
+        max_length: 64
+      retry.count:
+        type: int
+      error.type:
+        type: string
+        required: true
+        max_length: 128
+
+  # ----------------------------------------------------------
+  # DATABASE / CACHE — DEBUG
   # ----------------------------------------------------------
   db.operation.executed:
     severity: DEBUG
@@ -215,7 +323,28 @@ events:
         type: long
 
   # ----------------------------------------------------------
-  # BUSINESS LOGIC
+  # DATABASE — ERROR
+  # ----------------------------------------------------------
+  db.operation.failed:
+    severity: ERROR
+    description: "A database operation failed with an unhandled exception"
+    body: "{db.operation.name} on {db.collection.name} FAILED — {error.type}"
+    attributes:
+      db.operation.name:
+        type: string
+        required: true
+        max_length: 64
+      db.collection.name:
+        type: string
+        required: true
+        max_length: 128
+      error.type:
+        type: string
+        required: true
+        max_length: 128
+
+  # ----------------------------------------------------------
+  # BUSINESS LOGIC — INFO
   # ----------------------------------------------------------
   business.step.completed:
     severity: INFO
@@ -270,3 +399,30 @@ events:
       outcome.reason:
         type: string
         max_length: 512
+
+  # ----------------------------------------------------------
+  # BUSINESS LOGIC — ERROR
+  # ----------------------------------------------------------
+  business.step.failed:
+    severity: ERROR
+    description: "A business-logic step failed with an unhandled exception"
+    body: "Step [{step.name}] in flow [{flow.name}] FAILED — {error.type}"
+    attributes:
+      step.name:
+        type: string
+        required: true
+        max_length: 128
+      flow.name:
+        type: string
+        required: true
+        max_length: 128
+      entity.type:
+        type: string
+        max_length: 64
+      entity.id:
+        type: string
+        max_length: 64
+      error.type:
+        type: string
+        required: true
+        max_length: 128
