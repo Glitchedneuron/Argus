@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.argus</groupId>
+        <artifactId>argus-logging-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>argus-tracing</artifactId>
+    <name>Argus Tracing</name>
+    <description>
+        Lightweight tracing facade with switchable OTel / Datadog backends.
+
+        Backend is selected at startup via:
+          1. argus.tracer.backend system property  (otel | datadog | noop)
+          2. ARGUS_TRACER_BACKEND environment variable
+          3. Auto-detection: OTEL_EXPORTER_OTLP_ENDPOINT set → otel
+                             DD_AGENT_HOST / DD_TRACE_AGENT_URL set → datadog
+                             Otherwise → otel (console output in dev mode)
+
+        OTel backend:      sends spans via OTLP/HTTP; falls back to console in dev.
+        Datadog backend:   uses OpenTracing API; requires Datadog Java agent or
+                           dd-trace-java at runtime.
+        Noop backend:      discards all spans (testing / tracing disabled).
+
+        Log-trace correlation:
+          OTel backend  — automatic; OTel SDK injects trace_id/span_id into log
+                          records whenever an ArgusTracer span is active.
+          Datadog backend — use Datadog Java agent for automatic injection, or
+                            call ArgusSpan.traceId()/spanId() and attach manually.
+    </description>
+
+    <dependencies>
+        <!-- Argus logging integration (brings in OTel API + SDK transitively) -->
+        <dependency>
+            <groupId>com.argus</groupId>
+            <artifactId>argus-logging-core</artifactId>
+        </dependency>
+
+        <!-- OTel SDK tracing — SdkTracerProvider, BatchSpanProcessor, etc. -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk-trace</artifactId>
+        </dependency>
+
+        <!-- OTLP/HTTP span exporter (same artifact already used by argus-logging-core) -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+
+        <!--
+            OpenTracing API — Datadog's tracer implements this interface.
+            The implementation is supplied at runtime by:
+              • Datadog Java agent (dd-java-agent.jar) — auto-instruments and registers
+                a GlobalTracer; nothing extra needed in your pom.
+              • Or add com.datadoghq:dd-trace-java to your application dependencies for
+                programmatic (no-agent) Datadog tracing.
+            This module only needs the API jar at compile time.
+        -->
+        <dependency>
+            <groupId>io.opentracing</groupId>
+            <artifactId>opentracing-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentracing</groupId>
+            <artifactId>opentracing-util</artifactId>
+        </dependency>
+    </dependencies>
+</project>

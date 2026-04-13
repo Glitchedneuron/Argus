@@ -26,6 +26,11 @@
             <groupId>com.argus</groupId>
             <artifactId>argus-logging-core</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.argus</groupId>
+            <artifactId>argus-tracing</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
     <build>
