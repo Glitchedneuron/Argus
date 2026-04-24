@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.argus</groupId>
+        <artifactId>argus-logging-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>argus-tracing</artifactId>
+    <name>Argus Tracing</name>
+    <description>
+        Lightweight tracing facade over the OTel SDK with switchable OTEL / Datadog backends.
+
+        Both backends use the OpenTelemetry SDK internally:
+          OTEL     — OTLP/HTTP to OTEL_EXPORTER_OTLP_ENDPOINT, or console in dev.
+          DATADOG  — OTLP/HTTP to DD_AGENT_HOST:4318 (Datadog agent OTLP ingestion)
+                     + Datadog Unified Service Tagging resource attributes.
+          NOOP     — discards all spans with zero overhead.
+
+        This module provides:
+          • ArgusTracer / ArgusSpan — programmatic tracing API for teams that want it.
+          • ArgusAgent              — lifecycle manager combining logging + tracing.
+          • UnifiedSdkInitializer  — used by argus-tracing-agent for zero-code tracing.
+
+        For transparent (zero application-code) tracing, use argus-tracing-agent instead.
+    </description>
+
+    <dependencies>
+        <!-- Logging integration — brings in OTel API + SDK (logs) transitively -->
+        <dependency>
+            <groupId>com.argus</groupId>
+            <artifactId>argus-logging-core</artifactId>
+        </dependency>
+
+        <!-- OTel SDK tracing — SdkTracerProvider, BatchSpanProcessor, etc. -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk-trace</artifactId>
+        </dependency>
+
+        <!-- OTLP/HTTP span exporter -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+    </dependencies>
+</project>

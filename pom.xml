@@ -11,11 +11,15 @@
 
     <name>Argus Logging Framework</name>
     <description>
-        Structured, contract-first logging framework built on OpenTelemetry Logs Bridge API.
+        Structured, contract-first logging + tracing framework built on OpenTelemetry.
         A YAML contract is the single source of truth; a Maven plugin converts it to Java 21
         records at build time. At runtime the records are emitted via the OTel SDK — to an
         OTLP/HTTP collector (Datadog agent, OTel Collector) in production, or to a pretty
         console in dev when OTEL_EXPORTER_OTLP_ENDPOINT is absent.
+
+        Transparent tracing — no application code changes required:
+          attach  -javaagent:argus-tracing-agent.jar
+          set     ARGUS_TRACER_BACKEND=otel|datadog
     </description>
 
     <!--
@@ -24,9 +28,11 @@
         Modules are declared in dependency order so that `mvn install` from this
         parent works in a single pass:
 
-          1. argus-logging-codegen  – the Maven plugin (must be installed first)
-          2. argus-logging-core     – the runtime jar
-          3. argus-logging-example  – uses the plugin + the runtime jar
+          1. argus-logging-codegen   — the Maven plugin (must be installed first)
+          2. argus-logging-core      — the logging runtime jar
+          3. argus-tracing           — the tracing facade (depends on argus-logging-core)
+          4. argus-tracing-agent     — the fat Java agent JAR (depends on argus-tracing)
+          5. argus-logging-example   — demo service (logging only; tracing via -javaagent)
 
         First-time build: `mvn install` (not just `mvn package`) so the codegen
         plugin is available to the example module's generate-sources phase.
@@ -34,6 +40,8 @@
     <modules>
         <module>argus-logging-codegen</module>
         <module>argus-logging-core</module>
+        <module>argus-tracing</module>
+        <module>argus-tracing-agent</module>
         <module>argus-logging-example</module>
     </modules>
 
@@ -72,6 +80,11 @@
             <dependency>
                 <groupId>com.argus</groupId>
                 <artifactId>argus-logging-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.argus</groupId>
+                <artifactId>argus-tracing</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

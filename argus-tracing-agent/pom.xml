@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.argus</groupId>
+        <artifactId>argus-logging-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>argus-tracing-agent</artifactId>
+    <name>Argus Tracing Agent</name>
+    <description>
+        Java agent JAR (-javaagent:argus-tracing-agent.jar) that transparently initialises
+        a tracing backend and registers it with GlobalOpenTelemetry.
+
+        The application team adds zero tracing code.  Ops/infrastructure attaches the agent
+        at JVM startup and sets one environment variable to choose the backend:
+
+            ARGUS_TRACER_BACKEND=otel      # OTel SDK → OTLP_ENDPOINT or console
+            ARGUS_TRACER_BACKEND=datadog   # OTel SDK → Datadog agent at DD_AGENT_HOST:4318
+            ARGUS_TRACER_BACKEND=noop      # disable tracing (default when env var is absent)
+
+        How it works:
+          1. premain() runs before the application's main() method.
+          2. The agent initialises an OpenTelemetrySdk with both logging and tracing
+             providers (via argus-tracing's UnifiedSdkInitializer).
+          3. The SDK is registered as GlobalOpenTelemetry.
+          4. The system property "argus.agent.initialized" is set to "true".
+          5. ArgusLoggerFactory.create() detects this property and uses the global SDK,
+             so every ArgusLogger.emit() call automatically receives trace_id / span_id
+             from any active span — no code changes in the application.
+    </description>
+
+    <dependencies>
+        <!-- The agent configures argus-tracing's unified SDK initializer -->
+        <dependency>
+            <groupId>com.argus</groupId>
+            <artifactId>argus-tracing</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+                Shade plugin — produces a single fat JAR containing argus-tracing,
+                argus-logging-core, and the OTel SDK so the agent is fully self-contained
+                and does not depend on the application's classpath.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.3</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <shadedArtifactAttached>false</shadedArtifactAttached>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <manifestEntries>
+                                        <!-- Java agent entry point -->
+                                        <Premain-Class>com.argus.agent.ArgusTracingAgent</Premain-Class>
+                                        <!-- Allow the agent to be attached after JVM startup -->
+                                        <Agent-Class>com.argus.agent.ArgusTracingAgent</Agent-Class>
+                                        <Can-Redefine-Classes>false</Can-Redefine-Classes>
+                                        <Can-Retransform-Classes>false</Can-Retransform-Classes>
+                                    </manifestEntries>
+                                </transformer>
+                                <!-- Merge OTel service files (SPI registrations) -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

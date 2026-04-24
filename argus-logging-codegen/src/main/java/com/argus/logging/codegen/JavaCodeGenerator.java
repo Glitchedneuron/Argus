@@ -102,6 +102,17 @@ final class JavaCodeGenerator {
         List<Map.Entry<String, AttributeDefinition>> attrList = new ArrayList<>(attributes.entrySet());
         StringLimits limits = contract.getStringLimits();
 
+        // Inject error_envelope fields for ERROR / WARN severity events.
+        // Only fields not already defined in the event's own attribute list are appended.
+        String sev = event.getSeverity();
+        if (("ERROR".equals(sev) || "WARN".equals(sev)) && !contract.getErrorEnvelope().isEmpty()) {
+            for (Map.Entry<String, AttributeDefinition> envEntry : contract.getErrorEnvelope().entrySet()) {
+                if (!attributes.containsKey(envEntry.getKey())) {
+                    attrList.add(envEntry);
+                }
+            }
+        }
+
         StringBuilder sb = new StringBuilder(2048);
 
         // Package + imports
@@ -121,6 +132,11 @@ final class JavaCodeGenerator {
         }
         sb.append(" * <p>Event name: {@code ").append(event.getEventName()).append("}</p>\n");
         sb.append(" * <p>Severity: ").append(event.getSeverity()).append("</p>\n");
+        if ("ERROR".equals(event.getSeverity()) || "WARN".equals(event.getSeverity())) {
+            sb.append(" * <p>Error envelope fields ({@code exception.*}, {@code error.type}) are included\n");
+            sb.append(" * as optional components. Pass a {@link Throwable} to\n");
+            sb.append(" * {@code ArgusLogger.emit(event, throwable)} to populate them automatically.</p>\n");
+        }
         if (!event.getContext().isEmpty()) {
             sb.append(" * <p>Ambient context (propagated by OTel SDK): ")
               .append(String.join(", ", event.getContext())).append("</p>\n");
@@ -139,13 +155,13 @@ final class JavaCodeGenerator {
             String fieldName = toFieldName(otelName);
 
             sb.append("        ").append(javaType).append(' ').append(fieldName);
-            // inline comment: OTel name + constraints
+            if (i < attrList.size() - 1) sb.append(',');
+            // inline comment: OTel name + constraints (after the comma so the compiler sees it)
             sb.append("  // ").append(otelName);
             if (attr.isRequired()) sb.append(", required");
             if ("string".equals(attr.getType()) && effectiveMaxLength(attr, limits) > 0) {
                 sb.append(", max=").append(effectiveMaxLength(attr, limits));
             }
-            if (i < attrList.size() - 1) sb.append(',');
             sb.append('\n');
         }
         sb.append(") implements LogEvent {\n\n");
