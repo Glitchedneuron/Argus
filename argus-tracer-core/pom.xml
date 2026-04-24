@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.argus</groupId>
+        <artifactId>argus-tracer-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>argus-tracer-core</artifactId>
+    <name>Argus Tracer Core</name>
+    <description>
+        Programmatic tracing API (ArgusTracer / ArgusSpan) with switchable backends:
+          OTEL     — OTLP/HTTP to OTEL_EXPORTER_OTLP_ENDPOINT, or JSON console in dev.
+          DATADOG  — OTLP/HTTP to DD_AGENT_HOST:4318 (Datadog agent OTLP ingestion)
+                     + Datadog Unified Service Tagging resource attributes.
+          NOOP     — discards all spans with zero overhead.
+
+        Both OTEL and DATADOG backends use the OTel SDK internally.
+    </description>
+
+    <dependencies>
+        <!-- OTel SDK — SdkTracerProvider, OpenTelemetrySdk, context propagation -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk</artifactId>
+        </dependency>
+
+        <!-- OTLP/HTTP span exporter -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+    </dependencies>
+</project>

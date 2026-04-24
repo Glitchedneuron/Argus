@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.argus</groupId>
+    <artifactId>argus-tracer-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Argus Tracer</name>
+    <description>
+        Lightweight distributed tracing agent for Java 21.
+        Switchable between OpenTelemetry and Datadog backends via a single env var.
+        Both backends use the OTel SDK over OTLP/HTTP — no Datadog agent SDK required.
+
+        Two usage modes:
+          • -javaagent:argus-tracer-agent.jar   zero application-code changes
+          • ArgusTracerFactory / ArgusTracer API  programmatic custom spans
+    </description>
+
+    <!--
+        BUILD ORDER
+        1. argus-tracer-core   — API + OTel/Datadog/Noop backends
+        2. argus-tracer-agent  — fat JAR agent (shades core + OTel SDK)
+    -->
+    <modules>
+        <module>argus-tracer-core</module>
+        <module>argus-tracer-agent</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <otel.version>1.38.0</otel.version>
+        <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- OTel BOM — pins all io.opentelemetry:* versions -->
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-bom</artifactId>
+                <version>${otel.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>com.argus</groupId>
+                <artifactId>argus-tracer-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>${maven.compiler.plugin.version}</version>
+                    <configuration>
+                        <source>${java.version}</source>
+                        <target>${java.version}</target>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>
