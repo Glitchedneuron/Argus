@@ -52,7 +52,7 @@ final class ConsoleSpanExporter implements SpanExporter {
     private ConsoleSpanExporter() {}
 
     @Override
-    public CompletableResultCode export(Collection<? extends SpanData> spans) {
+    public CompletableResultCode export(Collection<SpanData> spans) {
         spans.forEach(this::print);
         return CompletableResultCode.ofSuccess();
     }

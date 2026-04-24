@@ -155,13 +155,13 @@ final class JavaCodeGenerator {
             String fieldName = toFieldName(otelName);
 
             sb.append("        ").append(javaType).append(' ').append(fieldName);
-            // inline comment: OTel name + constraints
+            if (i < attrList.size() - 1) sb.append(',');
+            // inline comment: OTel name + constraints (after the comma so the compiler sees it)
             sb.append("  // ").append(otelName);
             if (attr.isRequired()) sb.append(", required");
             if ("string".equals(attr.getType()) && effectiveMaxLength(attr, limits) > 0) {
                 sb.append(", max=").append(effectiveMaxLength(attr, limits));
             }
-            if (i < attrList.size() - 1) sb.append(',');
             sb.append('\n');
         }
         sb.append(") implements LogEvent {\n\n");

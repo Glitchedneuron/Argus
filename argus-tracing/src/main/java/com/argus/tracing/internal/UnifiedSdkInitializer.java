@@ -38,7 +38,7 @@ import io.opentelemetry.sdk.trace.export.SpanExporter;
  *   </tr>
  * </table>
  */
-final class UnifiedSdkInitializer {
+public final class UnifiedSdkInitializer {
 
     static final String INSTRUMENTATION_SCOPE   = "com.argus.tracing";
     static final String INSTRUMENTATION_VERSION = "1.0.0";
@@ -53,7 +53,7 @@ final class UnifiedSdkInitializer {
      * @param exporterEndpoint nullable — explicit OTLP endpoint override
      * @param datadogAgentHost nullable — hostname of the Datadog agent (DATADOG backend only)
      */
-    static OpenTelemetrySdk initialize(
+    public static OpenTelemetrySdk initialize(
             Backend backend,
             String  serviceName,
             String  serviceVersion,

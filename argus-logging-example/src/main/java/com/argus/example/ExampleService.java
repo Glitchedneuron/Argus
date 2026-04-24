@@ -101,7 +101,7 @@ public class ExampleService {
                 method, route, durationMs, HttpOutcome.SERVER_ERROR, errorType,
                 // error_envelope fields (exception.*) — pass null here;
                 // ArgusLogger.emit(event, cause) fills them in from the Throwable.
-                null, null, null, null), cause);
+                null, null, null), cause);
     }
 
     // -------------------------------------------------------------------------

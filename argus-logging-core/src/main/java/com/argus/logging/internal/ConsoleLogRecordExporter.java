@@ -175,10 +175,9 @@ final class ConsoleLogRecordExporter implements LogRecordExporter {
     }
 
     private static String bodyString(LogRecordData log) {
-        var body = log.getBodyValue();
+        var body = log.getBody();
         if (body == null) return "";
-        Object value = body.getValue();
-        return value != null ? value.toString() : "";
+        return body.asString();
     }
 
     private static String quoted(String s) {
