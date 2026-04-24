@@ -1,47 +1,31 @@
 package com.argus.tracing;
 
-import com.argus.tracing.internal.DatadogTracerBackend;
 import com.argus.tracing.internal.NoopTracerBackend;
 import com.argus.tracing.internal.OtelTracerBackend;
 import io.opentelemetry.api.OpenTelemetry;
 
 /**
- * Factory for obtaining {@link ArgusTracer} instances.
+ * Factory for obtaining standalone {@link ArgusTracer} instances.
  *
- * <h2>Quickstart (env-var driven)</h2>
- * <pre>{@code
- * private static final ArgusTracer TRACER = ArgusTracerFactory.create();
- * }</pre>
+ * <p>For most use-cases prefer {@link ArgusAgent}, which provides both a tracer and a
+ * logger factory backed by a single shared {@code OpenTelemetrySdk}.  Use this factory
+ * only when you need a tracer without the full agent lifecycle.</p>
  *
- * <h2>Explicit configuration</h2>
- * <pre>{@code
- * ArgusTracer tracer = ArgusTracerFactory.builder()
- *         .backend(Backend.OTEL)
- *         .serviceName("order-service")
- *         .serviceVersion("2.0.0")
- *         .environment("production")
- *         .build();
- * }</pre>
- *
- * <h2>Shared OTel SDK instance</h2>
- * <p>Pass the same {@code OpenTelemetry} instance used by {@code ArgusLoggerFactory} so
- * both logging and tracing share a single SDK (single resource, single exporter pipeline):</p>
- * <pre>{@code
- * OpenTelemetry otel = buildSharedOtelSdk();
- * ArgusLogger  logger = ArgusLoggerFactory.builder().withOpenTelemetry(otel).build()
- *                                          .getLogger(MyService.class.getName());
- * ArgusTracer  tracer = ArgusTracerFactory.builder().withOpenTelemetry(otel).build();
- * }</pre>
- *
- * <h2>Backend auto-detection order</h2>
+ * <h2>Backend selection order</h2>
  * <ol>
  *   <li>{@link Builder#backend(Backend)} — explicit programmatic override</li>
  *   <li>{@code argus.tracer.backend} system property</li>
  *   <li>{@code ARGUS_TRACER_BACKEND} environment variable</li>
+ *   <li>{@code DD_AGENT_HOST} / {@code DD_TRACE_AGENT_URL} set → {@link Backend#DATADOG}
+ *       (OTLP to Datadog agent at {@code DD_AGENT_HOST:4318})</li>
  *   <li>{@code OTEL_EXPORTER_OTLP_ENDPOINT} set → {@link Backend#OTEL}</li>
- *   <li>{@code DD_AGENT_HOST} or {@code DD_TRACE_AGENT_URL} set → {@link Backend#DATADOG}</li>
- *   <li>Fallback → {@link Backend#OTEL} (console output in dev mode)</li>
+ *   <li>Fallback → {@link Backend#OTEL} with console output (dev mode)</li>
  * </ol>
+ *
+ * <p>Both {@link Backend#OTEL} and {@link Backend#DATADOG} use the OpenTelemetry SDK
+ * internally.  The Datadog backend configures the SDK to send OTLP to the Datadog
+ * agent's OTLP ingestion port (4318) and adds Datadog Unified Service Tagging resource
+ * attributes ({@code dd.service}, {@code dd.env}, {@code dd.version}).</p>
  */
 public final class ArgusTracerFactory {
 
@@ -64,77 +48,40 @@ public final class ArgusTracerFactory {
 
     public static final class Builder {
 
-        private Backend     backend;
-        private String      serviceName;
-        private String      serviceVersion;
-        private String      environment;
-        private String      exporterEndpoint;
+        private Backend       backend;
+        private String        serviceName;
+        private String        serviceVersion;
+        private String        environment;
+        private String        exporterEndpoint;
         private OpenTelemetry openTelemetry;
 
-        /**
-         * Explicitly select the backend.
-         * When set, system-property and env-var auto-detection is skipped.
-         */
-        public Builder backend(Backend backend) {
-            this.backend = backend;
-            return this;
-        }
-
-        /** Override {@code OTEL_SERVICE_NAME}. */
-        public Builder serviceName(String serviceName) {
-            this.serviceName = serviceName;
-            return this;
-        }
-
-        /** Override {@code OTEL_SERVICE_VERSION}. */
-        public Builder serviceVersion(String serviceVersion) {
-            this.serviceVersion = serviceVersion;
-            return this;
-        }
-
-        /** Override {@code DEPLOYMENT_ENVIRONMENT}. */
-        public Builder environment(String environment) {
-            this.environment = environment;
-            return this;
-        }
+        public Builder backend(Backend backend)             { this.backend = backend; return this; }
+        public Builder serviceName(String n)                { this.serviceName = n; return this; }
+        public Builder serviceVersion(String v)             { this.serviceVersion = v; return this; }
+        public Builder environment(String e)                { this.environment = e; return this; }
+        public Builder exporterEndpoint(String url)         { this.exporterEndpoint = url; return this; }
 
         /**
-         * Override the OTLP exporter endpoint for the OTel backend.
-         * Falls back to {@code OTEL_EXPORTER_OTLP_ENDPOINT} env var, then console.
+         * Use an existing {@link OpenTelemetry} instance.
+         * When set, the factory creates no SDK of its own — {@link #serviceName},
+         * {@link #serviceVersion}, {@link #environment}, and {@link #exporterEndpoint}
+         * are ignored.
          */
-        public Builder exporterEndpoint(String url) {
-            this.exporterEndpoint = url;
-            return this;
-        }
-
-        /**
-         * Use an existing {@link OpenTelemetry} instance (OTel backend only).
-         *
-         * <p>When set, the factory delegates tracer creation to this instance instead
-         * of building its own {@code SdkTracerProvider}.  Useful when the application
-         * already manages a full OTel SDK (e.g. via the Java agent or a shared bootstrap).</p>
-         *
-         * <p>{@link #serviceName}, {@link #serviceVersion}, {@link #environment}, and
-         * {@link #exporterEndpoint} are ignored when this is set, because the resource
-         * and exporter pipeline are owned by the supplied instance.</p>
-         */
-        public Builder withOpenTelemetry(OpenTelemetry openTelemetry) {
-            this.openTelemetry = openTelemetry;
-            return this;
-        }
+        public Builder withOpenTelemetry(OpenTelemetry ot)  { this.openTelemetry = ot; return this; }
 
         public ArgusTracer build() {
             Backend resolved = resolveBackend();
+            if (resolved == Backend.NOOP) return new NoopTracerBackend();
+
+            // Both OTEL and DATADOG route through OtelTracerBackend.
+            // TracerConfig carries the backend enum so OtelTracingInitializer
+            // can select the right OTLP endpoint and resource attributes.
             TracerConfig config = new TracerConfig(
                     resolved, serviceName, serviceVersion, environment, exporterEndpoint);
-            return switch (resolved) {
-                case OTEL     -> new OtelTracerBackend(config, openTelemetry);
-                case DATADOG  -> new DatadogTracerBackend(config);
-                case NOOP     -> new NoopTracerBackend();
-            };
+            return new OtelTracerBackend(config, openTelemetry);
         }
 
-        // ---- Backend resolution -------------------------------------------------
+        // ---- Backend resolution -----------------------------------------------
 
         private Backend resolveBackend() {
             if (backend != null) return backend;
@@ -145,12 +92,10 @@ public final class ArgusTracerFactory {
             String envVar = System.getenv("ARGUS_TRACER_BACKEND");
             if (envVar != null && !envVar.isBlank()) return parseBackend(envVar);
 
-            // Auto-detect from well-known environment variables
-            if (System.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != null) return Backend.OTEL;
             if (System.getenv("DD_AGENT_HOST") != null
                     || System.getenv("DD_TRACE_AGENT_URL") != null) return Backend.DATADOG;
+            if (System.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != null) return Backend.OTEL;
 
-            // Default: OTel with console output (dev-friendly)
             return Backend.OTEL;
         }
 

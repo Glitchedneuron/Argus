@@ -1,6 +1,7 @@
 package com.argus.logging;
 
 import com.argus.logging.internal.OtelInitializer;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.OpenTelemetry;
 
 /**
@@ -53,10 +54,25 @@ public final class ArgusLoggerFactory {
     }
 
     /**
-     * Creates a factory using default environment-variable-driven configuration.
-     * Equivalent to {@code ArgusLoggerFactory.builder().build()}.
+     * Creates a factory using the best available OTel instance.
+     *
+     * <p>Resolution order:</p>
+     * <ol>
+     *   <li>If an {@code argus-tracing-agent} (or any OTel-compatible Java agent) has
+     *       pre-registered an SDK via {@code GlobalOpenTelemetry}, that instance is used.
+     *       This gives automatic trace-context injection into every log record with zero
+     *       application code changes — ops simply attaches the agent JAR.</li>
+     *   <li>Otherwise a standalone SDK is created from environment variables
+     *       ({@code OTEL_SERVICE_NAME}, {@code OTEL_EXPORTER_OTLP_ENDPOINT}, etc.).</li>
+     * </ol>
      */
     public static ArgusLoggerFactory create() {
+        // If a Java agent has set GlobalOpenTelemetry (signalled by the system property
+        // "argus.agent.initialized"), delegate to it so both logging and tracing share
+        // the same SDK context.
+        if ("true".equals(System.getProperty("argus.agent.initialized"))) {
+            return builder().withOpenTelemetry(GlobalOpenTelemetry.get()).build();
+        }
         return builder().build();
     }
 

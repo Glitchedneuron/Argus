@@ -19,6 +19,9 @@
         2. The service code imports and emits those records via ArgusLogger.
         3. In dev (no OTEL_EXPORTER_OTLP_ENDPOINT) logs go to the console.
            In production the same code ships OTLP/HTTP to the Datadog agent on port 4318.
+
+        Tracing is transparent — attach argus-tracing-agent.jar via -javaagent to get
+        trace_id/span_id in every log record without touching this module's code at all.
     </description>
 
     <dependencies>
@@ -26,20 +29,10 @@
             <groupId>com.argus</groupId>
             <artifactId>argus-logging-core</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.argus</groupId>
-            <artifactId>argus-tracing</artifactId>
-            <version>${project.version}</version>
-        </dependency>
     </dependencies>
 
     <build>
         <plugins>
-            <!--
-                Argus codegen plugin — runs in generate-sources, writes Java records.
-                NOTE: run `mvn install` from the parent root on first build so the
-                plugin is available in the local repository before this module builds.
-            -->
             <plugin>
                 <groupId>com.argus</groupId>
                 <artifactId>argus-logging-codegen</artifactId>
@@ -51,11 +44,6 @@
                             <goal>generate</goal>
                         </goals>
                         <configuration>
-                            <!--
-                                Point at the shared global contract.
-                                Services with their own domain events can extend this
-                                or use a local copy; the namespace controls the Java package.
-                            -->
                             <contractFile>${project.basedir}/../contracts/log-contract.yaml</contractFile>
                         </configuration>
                     </execution>
