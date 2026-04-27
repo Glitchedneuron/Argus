@@ -134,11 +134,11 @@ public final class ArgusTracerAgent {
         };
     }
 
-    private static String resolveEnv(String primary, String fallback, String def) {
-        String v = System.getenv(primary);
-        if (v != null && !v.isBlank()) return v;
-        v = System.getenv(fallback);
-        return (v != null && !v.isBlank()) ? v : def;
+    private static String resolveEnv(String primary, String fallback, String defaultValue) {
+        String val = System.getenv(primary);
+        if (val != null && !val.isBlank()) return val;
+        val = System.getenv(fallback);
+        return (val != null && !val.isBlank()) ? val : defaultValue;
     }
 
     private static void log(String msg) {

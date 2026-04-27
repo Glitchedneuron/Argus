@@ -40,20 +40,20 @@ final class OtelArgusSpan implements ArgusSpan {
     }
 
     @Override
-    public ArgusSpan recordException(Throwable t) {
-        span.recordException(t);
+    public ArgusSpan recordException(Throwable throwable) {
+        span.recordException(throwable);
         span.setStatus(StatusCode.ERROR);
         return this;
     }
 
     @Override
-    public ArgusSpan setStatus(SpanStatus status) {
+    public ArgusSpan status(SpanStatus status) {
         span.setStatus(toOtel(status));
         return this;
     }
 
     @Override
-    public ArgusSpan setStatus(SpanStatus status, String description) {
+    public ArgusSpan status(SpanStatus status, String description) {
         span.setStatus(toOtel(status), description);
         return this;
     }
@@ -81,8 +81,8 @@ final class OtelArgusSpan implements ArgusSpan {
         end();
     }
 
-    private static StatusCode toOtel(SpanStatus s) {
-        return switch (s) {
+    private static StatusCode toOtel(SpanStatus spanStatus) {
+        return switch (spanStatus) {
             case OK    -> StatusCode.OK;
             case ERROR -> StatusCode.ERROR;
             case UNSET -> StatusCode.UNSET;

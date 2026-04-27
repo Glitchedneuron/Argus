@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="Argus Tracer"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0
+                             https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+
+    <description>PMD ruleset for Argus Tracer</description>
+
+    <!-- Best Practices — exclude SystemPrintln (Console exporter writes to stdout intentionally) -->
+    <rule ref="category/java/bestpractices.xml">
+        <exclude name="SystemPrintln"/>
+    </rule>
+
+    <!-- Code Style — exclude rules that conflict with intentional design choices -->
+    <rule ref="category/java/codestyle.xml">
+        <!-- Single-return enforcement conflicts with guard-clause style -->
+        <exclude name="OnlyOneReturn"/>
+        <!-- Verbose var names not always better (e.g. loop vars, builder pattern) -->
+        <exclude name="LongVariable"/>
+        <!-- Requires a constructor even for utility/singleton classes with static factory -->
+        <exclude name="AtLeastOneConstructor"/>
+        <!-- Conflicts with fluent builder setters returning 'this' -->
+        <exclude name="LinguisticNaming"/>
+        <!-- Overly strict about local final declarations -->
+        <exclude name="LocalVariableCouldBeFinal"/>
+        <!-- Overly strict about method parameter final declarations -->
+        <exclude name="MethodArgumentCouldBeFinal"/>
+        <!-- Conflicts with OTel's own naming (SpanKind, StatusCode, etc.) -->
+        <exclude name="UnnecessaryFullyQualifiedName"/>
+        <!-- var is idiomatic Java 21 -->
+        <exclude name="UseDiamondOperator"/>
+    </rule>
+
+    <!-- Design — exclude Law of Demeter (fluent APIs chain naturally) -->
+    <rule ref="category/java/design.xml">
+        <exclude name="LawOfDemeter"/>
+        <!-- Small utility classes don't need excessive abstraction -->
+        <exclude name="ExcessiveImports"/>
+    </rule>
+
+    <!-- Error Prone -->
+    <rule ref="category/java/errorprone.xml">
+        <!-- OTel uses null sentinel values; null assignments are idiomatic there -->
+        <exclude name="NullAssignment"/>
+    </rule>
+
+    <!-- Performance -->
+    <rule ref="category/java/performance.xml"/>
+
+    <!-- Multithreading -->
+    <rule ref="category/java/multithreading.xml"/>
+
+</ruleset>

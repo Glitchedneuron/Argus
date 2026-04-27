@@ -45,6 +45,9 @@ final class ConsoleSpanExporter implements SpanExporter {
     private static final DateTimeFormatter ISO_FMT =
             DateTimeFormatter.ISO_INSTANT.withZone(ZoneOffset.UTC);
 
+    /** JSON field separator used between every top-level span field. */
+    private static final String FIELD_SEP = ",\n";
+
     static ConsoleSpanExporter create() {
         return new ConsoleSpanExporter();
     }
@@ -69,86 +72,87 @@ final class ConsoleSpanExporter implements SpanExporter {
 
     // -------------------------------------------------------------------------
 
+    @SuppressWarnings("PMD.SystemPrintln")
     private void print(SpanData span) {
-        StringBuilder sb = new StringBuilder(512);
-        sb.append("{\n");
+        StringBuilder json = new StringBuilder(512);
+        json.append("{\n");
 
-        sb.append("  \"trace_id\": ").append(q(span.getTraceId())).append(",\n");
-        sb.append("  \"span_id\": ").append(q(span.getSpanId())).append(",\n");
-        sb.append("  \"parent_span_id\": ").append(q(span.getParentSpanId())).append(",\n");
-        sb.append("  \"name\": ").append(q(span.getName())).append(",\n");
-        sb.append("  \"kind\": ").append(q(span.getKind().name())).append(",\n");
+        json.append("  \"trace_id\": ").append(quoted(span.getTraceId())).append(FIELD_SEP);
+        json.append("  \"span_id\": ").append(quoted(span.getSpanId())).append(FIELD_SEP);
+        json.append("  \"parent_span_id\": ").append(quoted(span.getParentSpanId())).append(FIELD_SEP);
+        json.append("  \"name\": ").append(quoted(span.getName())).append(FIELD_SEP);
+        json.append("  \"kind\": ").append(quoted(span.getKind().name())).append(FIELD_SEP);
 
         long startNs = span.getStartEpochNanos();
         long endNs   = span.getEndEpochNanos();
-        sb.append("  \"start_time\": ").append(epochNsToIso(startNs)).append(",\n");
-        sb.append("  \"end_time\": ").append(epochNsToIso(endNs)).append(",\n");
-        sb.append("  \"duration_ms\": ").append(TimeUnit.NANOSECONDS.toMillis(endNs - startNs)).append(",\n");
+        json.append("  \"start_time\": ").append(epochNsToIso(startNs)).append(FIELD_SEP);
+        json.append("  \"end_time\": ").append(epochNsToIso(endNs)).append(FIELD_SEP);
+        json.append("  \"duration_ms\": ").append(TimeUnit.NANOSECONDS.toMillis(endNs - startNs)).append(FIELD_SEP);
 
-        StatusData status = span.getStatus();
-        sb.append("  \"status\": ").append(q(status.getStatusCode().name()));
-        if (status.getDescription() != null && !status.getDescription().isBlank()) {
-            sb.append(",\n  \"status_description\": ").append(q(status.getDescription()));
+        StatusData statusData = span.getStatus();
+        json.append("  \"status\": ").append(quoted(statusData.getStatusCode().name()));
+        if (statusData.getDescription() != null && !statusData.getDescription().isBlank()) {
+            json.append(FIELD_SEP).append("  \"status_description\": ").append(quoted(statusData.getDescription()));
         }
-        sb.append(",\n");
+        json.append(FIELD_SEP);
 
-        sb.append("  \"resource\": ").append(attrsInline(span.getResource().getAttributes())).append(",\n");
+        json.append("  \"resource\": ").append(attrsInline(span.getResource().getAttributes())).append(FIELD_SEP);
 
         var scope = span.getInstrumentationScopeInfo();
-        sb.append("  \"instrumentation_scope\": { \"name\": ").append(q(scope.getName()));
+        json.append("  \"instrumentation_scope\": { \"name\": ").append(quoted(scope.getName()));
         if (scope.getVersion() != null) {
-            sb.append(", \"version\": ").append(q(scope.getVersion()));
+            json.append(", \"version\": ").append(quoted(scope.getVersion()));
         }
-        sb.append(" },\n");
+        json.append(" }").append(FIELD_SEP);
 
-        sb.append("  \"attributes\": ").append(attrsInline(span.getAttributes())).append(",\n");
+        json.append("  \"attributes\": ").append(attrsInline(span.getAttributes())).append(FIELD_SEP);
 
-        sb.append("  \"events\": [");
+        json.append("  \"events\": [");
         var events = span.getEvents();
-        for (int i = 0; i < events.size(); i++) {
-            var e = events.get(i);
-            sb.append("\n    { \"name\": ").append(q(e.getName()))
-              .append(", \"time\": ").append(epochNsToIso(e.getEpochNanos()))
-              .append(", \"attributes\": ").append(attrsInline(e.getAttributes()))
-              .append(" }");
-            if (i < events.size() - 1) sb.append(",");
+        for (int idx = 0; idx < events.size(); idx++) {
+            var event = events.get(idx);
+            json.append("\n    { \"name\": ").append(quoted(event.getName()))
+                .append(", \"time\": ").append(epochNsToIso(event.getEpochNanos()))
+                .append(", \"attributes\": ").append(attrsInline(event.getAttributes()))
+                .append(" }");
+            if (idx < events.size() - 1) json.append(",");
         }
-        if (!events.isEmpty()) sb.append("\n  ");
-        sb.append("]\n}");
+        if (!events.isEmpty()) json.append("\n  ");
+        json.append("]\n}");
 
-        System.out.println(sb);
+        System.out.println(json);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static String attrsInline(Attributes attrs) {
         if (attrs.isEmpty()) return "{}";
-        StringBuilder sb = new StringBuilder("{");
+        StringBuilder builder = new StringBuilder("{");
         AtomicBoolean first = new AtomicBoolean(true);
-        attrs.forEach((k, v) -> {
-            if (!first.getAndSet(false)) sb.append(", ");
-            sb.append(q(k.getKey())).append(": ").append(jsonVal((AttributeKey) k, v));
+        attrs.forEach((key, val) -> {
+            if (!first.getAndSet(false)) builder.append(", ");
+            builder.append(quoted(key.getKey())).append(": ").append(jsonVal((AttributeKey) key, val));
         });
-        return sb.append("}").toString();
+        return builder.append("}").toString();
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static String jsonVal(AttributeKey key, Object value) {
         return switch ((AttributeType) key.getType()) {
             case LONG, DOUBLE, BOOLEAN -> String.valueOf(value);
-            default -> q(String.valueOf(value));
+            default -> quoted(String.valueOf(value));
         };
     }
 
     private static String epochNsToIso(long nanos) {
         if (nanos == 0) return "null";
-        return q(ISO_FMT.format(Instant.ofEpochSecond(nanos / 1_000_000_000L, nanos % 1_000_000_000L)));
+        return quoted(ISO_FMT.format(Instant.ofEpochSecond(nanos / 1_000_000_000L, nanos % 1_000_000_000L)));
     }
 
-    private static String q(String s) {
-        return "\"" + s.replace("\\", "\\\\")
-                       .replace("\"", "\\\"")
-                       .replace("\n", "\\n")
-                       .replace("\r", "\\r")
-                       .replace("\t", "\\t") + "\"";
+    private static String quoted(String text) {
+        return "\"" + text.replace("\\", "\\\\")
+                          .replace("\"", "\\\"")
+                          .replace("\n", "\\n")
+                          .replace("\r", "\\r")
+                          .replace("\t", "\\t") + "\"";
     }
 }

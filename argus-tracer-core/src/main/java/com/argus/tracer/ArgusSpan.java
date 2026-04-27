@@ -42,20 +42,20 @@ public interface ArgusSpan extends AutoCloseable {
      *
      * @return {@code this} for chaining
      */
-    ArgusSpan recordException(Throwable t);
+    ArgusSpan recordException(Throwable throwable);
 
     // ---- Status --------------------------------------------------------------
 
-    /** Set the outcome status without a description. Returns {@code this}. */
-    ArgusSpan setStatus(SpanStatus status);
+    /** Mark the outcome status of this span. Returns {@code this} for chaining. */
+    ArgusSpan status(SpanStatus status);
 
     /**
-     * Set the outcome status with a human-readable description.
+     * Mark the outcome status of this span with a human-readable description.
      * The description is surfaced in back-end UIs (e.g. Datadog APM error message).
      *
      * @return {@code this} for chaining
      */
-    ArgusSpan setStatus(SpanStatus status, String description);
+    ArgusSpan status(SpanStatus status, String description);
 
     // ---- Context identifiers -------------------------------------------------
 

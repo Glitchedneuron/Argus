@@ -157,10 +157,10 @@ If the block throws a `RuntimeException`, the span is automatically marked `ERRO
 try (ArgusSpan span = tracer.startSpan("charge-payment", SpanKind.CLIENT)) {
     try {
         gateway.charge(amount);
-        span.setStatus(SpanStatus.OK);
+        span.status(SpanStatus.OK);
     } catch (PaymentException e) {
-        span.recordException(e)                          // adds exception.* attributes
-            .setStatus(SpanStatus.ERROR, e.getMessage()); // shown in APM UI
+        span.recordException(e)                         // adds exception.* attributes
+            .status(SpanStatus.ERROR, e.getMessage());  // shown in APM UI
         throw e;
     }
 }
@@ -288,8 +288,8 @@ span.tag("key", "value")              // String attribute
     .tag("key", 42L)                  // Long attribute
     .tag("key", true)                 // Boolean attribute
     .recordException(throwable)       // Records exception.* attributes, sets ERROR status
-    .setStatus(SpanStatus.OK)         // Explicit status (OK / ERROR / UNSET)
-    .setStatus(SpanStatus.ERROR, "msg")
+    .status(SpanStatus.OK)            // Explicit status (OK / ERROR / UNSET)
+    .status(SpanStatus.ERROR, "msg")
     .traceId()                        // W3C 32-hex trace ID (empty string when noop)
     .spanId()                         // W3C 16-hex span ID  (empty string when noop)
     .end();                           // End span + release context (idempotent)

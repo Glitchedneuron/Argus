@@ -78,22 +78,22 @@ public final class ArgusTracerFactory {
         private OpenTelemetry openTelemetry;
 
         /** Explicitly select the backend. Bypasses all env-var auto-detection. */
-        public Builder backend(Backend b)              { this.backend = b; return this; }
-        public Builder serviceName(String n)            { this.serviceName = n; return this; }
-        public Builder serviceVersion(String v)         { this.serviceVersion = v; return this; }
-        public Builder environment(String e)            { this.environment = e; return this; }
+        public Builder backend(Backend backend)              { this.backend = backend; return this; }
+        public Builder serviceName(String name)              { this.serviceName = name; return this; }
+        public Builder serviceVersion(String version)        { this.serviceVersion = version; return this; }
+        public Builder environment(String environment)       { this.environment = environment; return this; }
 
         /** Override the OTLP endpoint (OTel backend). Use {@link #datadogAgentHost} for Datadog. */
-        public Builder exporterEndpoint(String url)     { this.exporterEndpoint = url; return this; }
+        public Builder exporterEndpoint(String url)          { this.exporterEndpoint = url; return this; }
 
         /** Datadog agent hostname. Defaults to {@code DD_AGENT_HOST} env var, then {@code localhost}. */
-        public Builder datadogAgentHost(String h)       { this.datadogAgentHost = h; return this; }
+        public Builder datadogAgentHost(String host)         { this.datadogAgentHost = host; return this; }
 
         /**
          * Supply an existing {@link OpenTelemetry} instance (e.g. from the OTel Java agent).
          * When set, all other options except {@link #backend} are ignored.
          */
-        public Builder withOpenTelemetry(OpenTelemetry ot) { this.openTelemetry = ot; return this; }
+        public Builder withOpenTelemetry(OpenTelemetry openTelemetry) { this.openTelemetry = openTelemetry; return this; }
 
         public ArgusTracer build() {
             Backend resolved = resolveBackend();

@@ -10,14 +10,14 @@ public final class NoopArgusSpan implements ArgusSpan {
 
     private NoopArgusSpan() {}
 
-    @Override public ArgusSpan tag(String k, String v)          { return this; }
-    @Override public ArgusSpan tag(String k, long v)            { return this; }
-    @Override public ArgusSpan tag(String k, boolean v)         { return this; }
-    @Override public ArgusSpan recordException(Throwable t)     { return this; }
-    @Override public ArgusSpan setStatus(SpanStatus s)          { return this; }
-    @Override public ArgusSpan setStatus(SpanStatus s, String d){ return this; }
-    @Override public String traceId()                           { return ""; }
-    @Override public String spanId()                            { return ""; }
-    @Override public void end()                                 {}
-    @Override public void close()                               {}
+    @Override public ArgusSpan tag(String key, String value)                          { return this; }
+    @Override public ArgusSpan tag(String key, long value)                            { return this; }
+    @Override public ArgusSpan tag(String key, boolean value)                         { return this; }
+    @Override public ArgusSpan recordException(Throwable throwable)                   { return this; }
+    @Override public ArgusSpan status(SpanStatus spanStatus)                          { return this; }
+    @Override public ArgusSpan status(SpanStatus spanStatus, String description)      { return this; }
+    @Override public String traceId()                                                 { return ""; }
+    @Override public String spanId()                                                  { return ""; }
+    @Override public void end()                                                       {}
+    @Override public void close()                                                     {}
 }

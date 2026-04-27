@@ -37,6 +37,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <otel.version>1.38.0</otel.version>
         <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
+        <maven.pmd.plugin.version>3.21.0</maven.pmd.plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -70,7 +71,37 @@
                         <target>${java.version}</target>
                     </configuration>
                 </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-pmd-plugin</artifactId>
+                    <version>${maven.pmd.plugin.version}</version>
+                    <configuration>
+                        <targetJdk>17</targetJdk>
+                        <rulesets>
+                            <ruleset>${maven.multiModuleProjectDirectory}/pmd-ruleset.xml</ruleset>
+                        </rulesets>
+                        <failOnViolation>true</failOnViolation>
+                        <printFailingErrors>true</printFailingErrors>
+                        <includeTests>false</includeTests>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                            <phase>verify</phase>
+                        </execution>
+                    </executions>
+                </plugin>
             </plugins>
         </pluginManagement>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-pmd-plugin</artifactId>
+            </plugin>
+        </plugins>
     </build>
 </project>

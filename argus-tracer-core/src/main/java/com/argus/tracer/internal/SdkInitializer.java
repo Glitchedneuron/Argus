@@ -80,18 +80,18 @@ public final class SdkInitializer {
     // -------------------------------------------------------------------------
 
     private static Resource buildResource(Backend backend, String name, String ver, String env) {
-        var rb = Resource.getDefault().toBuilder()
+        var builder = Resource.getDefault().toBuilder()
                 .put(AttributeKey.stringKey("service.name"),    name)
                 .put(AttributeKey.stringKey("service.version"), ver)
                 .put(AttributeKey.stringKey("deployment.environment.name"), env);
 
         if (backend == Backend.DATADOG) {
-            rb.put(AttributeKey.stringKey("dd.service"), name)
-              .put(AttributeKey.stringKey("dd.env"),     env)
-              .put(AttributeKey.stringKey("dd.version"), ver);
+            builder.put(AttributeKey.stringKey("dd.service"), name)
+                   .put(AttributeKey.stringKey("dd.env"),     env)
+                   .put(AttributeKey.stringKey("dd.version"), ver);
         }
 
-        return rb.build();
+        return builder.build();
     }
 
     private static String resolveEndpoint(Backend backend, String explicit, String ddHost) {
@@ -109,7 +109,7 @@ public final class SdkInitializer {
     /** Resolve a value: explicit → env var → fallback. */
     public static String resolve(String explicit, String envKey, String fallback) {
         if (explicit != null && !explicit.isBlank()) return explicit;
-        String v = System.getenv(envKey);
-        return (v != null && !v.isBlank()) ? v : fallback;
+        String envValue = System.getenv(envKey);
+        return (envValue != null && !envValue.isBlank()) ? envValue : fallback;
     }
 }
