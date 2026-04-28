@@ -10,6 +10,13 @@ public enum Backend {
      *  Adds Datadog Unified Service Tagging resource attributes ({@code dd.service / dd.env / dd.version}). */
     DATADOG,
 
+    /**
+     * dd-trace-java native tracer → Datadog agent native protocol at {@code DD_AGENT_HOST:8126}.
+     * Uses the official Datadog SDK (dd-trace-ot) directly; no OTLP ingestion required.
+     * Set {@code ARGUS_TRACER_BACKEND=datadog_native} to select.
+     */
+    DATADOG_NATIVE,
+
     /** Discards all spans with zero overhead. */
     NOOP
 }

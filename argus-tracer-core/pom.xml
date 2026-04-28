@@ -34,5 +34,21 @@
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-exporter-otlp</artifactId>
         </dependency>
+
+        <!-- Datadog native tracer — thin API jar (CorrelationIdentifier, DDTags) -->
+        <dependency>
+            <groupId>com.datadoghq</groupId>
+            <artifactId>dd-trace-api</artifactId>
+            <version>1.44.0</version>
+        </dependency>
+
+        <!-- Datadog tracer implementation (DDTracer.builder, GlobalTracer).
+             Provided: library users supply it at runtime; agent shades it in. -->
+        <dependency>
+            <groupId>com.datadoghq</groupId>
+            <artifactId>dd-trace-ot</artifactId>
+            <version>1.44.0</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 </project>

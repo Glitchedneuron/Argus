@@ -1,5 +1,6 @@
 package com.argus.tracer;
 
+import com.argus.tracer.internal.DatadogSdkInitializer;
 import com.argus.tracer.internal.NoopTracerBackend;
 import com.argus.tracer.internal.OtelTracerBackend;
 import com.argus.tracer.internal.SdkInitializer;
@@ -16,13 +17,13 @@ import io.opentelemetry.sdk.OpenTelemetrySdk;
  * }</pre>
  *
  * <p>When {@code argus-tracer-agent.jar} is attached as {@code -javaagent}, {@code create()}
- * automatically wraps {@code GlobalOpenTelemetry} — the same SDK the agent configured.
+ * automatically wraps the backend the agent configured — OTel, Datadog OTLP, or Datadog native.
  * No extra wiring needed.</p>
  *
  * <h2>Explicit configuration</h2>
  * <pre>{@code
  * ArgusTracer tracer = ArgusTracerFactory.builder()
- *         .backend(Backend.DATADOG)
+ *         .backend(Backend.DATADOG_NATIVE)
  *         .serviceName("order-service")
  *         .serviceVersion("2.0.0")
  *         .environment("production")
@@ -44,17 +45,24 @@ import io.opentelemetry.sdk.OpenTelemetrySdk;
  */
 public final class ArgusTracerFactory {
 
+    private static final String PROP_INITIALIZED = "argus.tracer.initialized";
+    private static final String PROP_BACKEND     = "argus.tracer.backend";
+    private static final String BACKEND_DD_NATIVE = "datadog_native";
+
     private ArgusTracerFactory() {}
 
     /**
      * Create a tracer using environment-variable auto-detection.
      *
      * <p>When the Argus tracing agent is attached ({@code -javaagent:argus-tracer-agent.jar}),
-     * this method wraps {@code GlobalOpenTelemetry} so your custom spans join the same
-     * trace as any spans the agent or other OTel instrumentation creates.</p>
+     * this method wraps the backend the agent configured. For the OTel/DATADOG backends it wraps
+     * {@code GlobalOpenTelemetry}; for {@link Backend#DATADOG_NATIVE} it wraps the DD global tracer.</p>
      */
     public static ArgusTracer create() {
-        if ("true".equals(System.getProperty("argus.tracer.initialized"))) {
+        if ("true".equals(System.getProperty(PROP_INITIALIZED))) {
+            if (BACKEND_DD_NATIVE.equals(System.getProperty(PROP_BACKEND))) {
+                return DatadogSdkInitializer.initialize(null, null, null, null, 0);
+            }
             return new OtelTracerBackend(GlobalOpenTelemetry.get(), null);
         }
         return builder().build();
@@ -83,7 +91,7 @@ public final class ArgusTracerFactory {
         public Builder serviceVersion(String version)        { this.serviceVersion = version; return this; }
         public Builder environment(String environment)       { this.environment = environment; return this; }
 
-        /** Override the OTLP endpoint (OTel backend). Use {@link #datadogAgentHost} for Datadog. */
+        /** Override the OTLP endpoint (OTel / DATADOG backends). Use {@link #datadogAgentHost} for Datadog native. */
         public Builder exporterEndpoint(String url)          { this.exporterEndpoint = url; return this; }
 
         /** Datadog agent hostname. Defaults to {@code DD_AGENT_HOST} env var, then {@code localhost}. */
@@ -92,12 +100,18 @@ public final class ArgusTracerFactory {
         /**
          * Supply an existing {@link OpenTelemetry} instance (e.g. from the OTel Java agent).
          * When set, all other options except {@link #backend} are ignored.
+         * Not applicable for {@link Backend#DATADOG_NATIVE}.
          */
         public Builder withOpenTelemetry(OpenTelemetry openTelemetry) { this.openTelemetry = openTelemetry; return this; }
 
         public ArgusTracer build() {
             Backend resolved = resolveBackend();
             if (resolved == Backend.NOOP) return new NoopTracerBackend();
+
+            if (resolved == Backend.DATADOG_NATIVE) {
+                return DatadogSdkInitializer.initialize(
+                        serviceName, serviceVersion, environment, datadogAgentHost, 0);
+            }
 
             if (openTelemetry != null) {
                 return new OtelTracerBackend(openTelemetry, null);
@@ -112,7 +126,7 @@ public final class ArgusTracerFactory {
         private Backend resolveBackend() {
             if (backend != null) return backend;
 
-            String prop = System.getProperty("argus.tracer.backend");
+            String prop = System.getProperty(PROP_BACKEND);
             if (prop != null && !prop.isBlank()) return parseBackend(prop);
 
             String env = System.getenv("ARGUS_TRACER_BACKEND");
@@ -127,12 +141,13 @@ public final class ArgusTracerFactory {
 
         private static Backend parseBackend(String value) {
             return switch (value.trim().toUpperCase()) {
-                case "OTEL", "OPENTELEMETRY" -> Backend.OTEL;
-                case "DATADOG", "DD"         -> Backend.DATADOG;
-                case "NOOP", "NONE", "OFF"   -> Backend.NOOP;
+                case "OTEL", "OPENTELEMETRY"         -> Backend.OTEL;
+                case "DATADOG", "DD"                 -> Backend.DATADOG;
+                case "DATADOG_NATIVE", "DD_NATIVE"   -> Backend.DATADOG_NATIVE;
+                case "NOOP", "NONE", "OFF"           -> Backend.NOOP;
                 default -> throw new IllegalArgumentException(
                         "Unknown argus.tracer.backend: \"" + value
-                        + "\". Valid values: otel, datadog, noop");
+                        + "\". Valid values: otel, datadog, datadog_native, noop");
             };
         }
     }

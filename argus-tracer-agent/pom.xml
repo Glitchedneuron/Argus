@@ -24,6 +24,14 @@
             <groupId>com.argus</groupId>
             <artifactId>argus-tracer-core</artifactId>
         </dependency>
+
+        <!-- Shade dd-trace-ot into the fat JAR so DATADOG_NATIVE works without
+             requiring users to add dd-trace-ot to their own classpath. -->
+        <dependency>
+            <groupId>com.datadoghq</groupId>
+            <artifactId>dd-trace-ot</artifactId>
+            <version>1.44.0</version>
+        </dependency>
     </dependencies>
 
     <build>
