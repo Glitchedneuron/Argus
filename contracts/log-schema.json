@@ -1,0 +1,1136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:argus:log-event:v1",
+  "title": "Argus Log Event",
+  "description": "Structured log event schema for the Argus observability framework. Conforms to the OpenTelemetry Log Data Model (https://opentelemetry.io/docs/specs/otel/logs/data-model/) and W3C Trace Context (https://www.w3.org/TR/trace-context/). Each log record represents one structured event emitted by ArgusLogger.",
+
+  "$defs": {
+
+    "otelTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 / ISO 8601 timestamp with sub-second precision. Nanosecond resolution is preferred (e.g. 2024-01-15T10:30:00.000000000Z). Conforms to W3C Date and Time Formats Note."
+    },
+
+    "w3cTraceId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$",
+      "description": "W3C Trace Context trace-id: a 16-byte (128-bit) unique identifier encoded as 32 lowercase hexadecimal characters. All-zeros value (00000000000000000000000000000000) is invalid per the spec."
+    },
+
+    "w3cSpanId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "W3C Trace Context parent-id (span-id): an 8-byte (64-bit) identifier encoded as 16 lowercase hexadecimal characters. All-zeros value (0000000000000000) is invalid per the spec."
+    },
+
+    "w3cTraceFlags": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255,
+      "description": "W3C Trace Context trace-flags byte. Bit 0 (value 1) is the 'sampled' flag. Remaining bits are reserved."
+    },
+
+    "severityNumber": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 24,
+      "description": "OTel Log Data Model SeverityNumber. Numeric levels: TRACE=1–4, DEBUG=5–8, INFO=9–12, WARN=13–16, ERROR=17–20, FATAL=21–24. Argus uses the canonical levels: DEBUG=5, INFO=9, WARN=13, ERROR=17."
+    },
+
+    "severityText": {
+      "type": "string",
+      "enum": [
+        "TRACE",  "TRACE2",  "TRACE3",  "TRACE4",
+        "DEBUG",  "DEBUG2",  "DEBUG3",  "DEBUG4",
+        "INFO",   "INFO2",   "INFO3",   "INFO4",
+        "WARN",   "WARN2",   "WARN3",   "WARN4",
+        "ERROR",  "ERROR2",  "ERROR3",  "ERROR4",
+        "FATAL",  "FATAL2",  "FATAL3",  "FATAL4"
+      ],
+      "description": "Human-readable severity label per OTel SeverityText convention. Must be consistent with severityNumber."
+    },
+
+    "resource": {
+      "type": "object",
+      "description": "OTel Resource: entity producing the log. Populated from OTEL_SERVICE_NAME, OTEL_SERVICE_VERSION, and DEPLOYMENT_ENVIRONMENT environment variables.",
+      "required": ["service.name"],
+      "properties": {
+        "service.name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "Logical name of the service. OTel semantic convention: service.name."
+        },
+        "service.version": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Release version of the service. OTel semantic convention: service.version."
+        },
+        "deployment.environment.name": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Deployment environment name (e.g. production, staging, development). OTel semantic convention: deployment.environment.name."
+        }
+      },
+      "additionalProperties": true
+    },
+
+    "instrumentationScope": {
+      "type": "object",
+      "description": "OTel InstrumentationScope identifying the instrumentation library that emitted the log.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Instrumentation scope name (e.g. com.argus.logging)."
+        },
+        "version": {
+          "type": "string",
+          "description": "Instrumentation scope version string."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "eventName": {
+      "type": "string",
+      "enum": [
+        "http.request.completed",
+        "http.client.request.completed",
+        "http.request.failed",
+        "db.operation.executed",
+        "db.operation.failed",
+        "cache.operation.result",
+        "async.event.processed",
+        "async.event.published",
+        "async.event.failed",
+        "business.step.completed",
+        "business.rule.evaluated",
+        "business.step.failed"
+      ],
+      "description": "OTel EventName — the canonical dot-separated identifier for this class of log event. Set as the event.name attribute; collectors map it to the OTel LogRecord EventName field per the Log Data Model spec."
+    },
+
+    "httpOutcome": {
+      "type": "string",
+      "enum": ["SUCCESS", "CLIENT_ERROR", "SERVER_ERROR", "TIMEOUT", "UNKNOWN"],
+      "description": "Outcome of an inbound or outbound HTTP request."
+    },
+
+    "dataOutcome": {
+      "type": "string",
+      "enum": ["SUCCESS", "FAILURE", "NOT_FOUND", "CACHE_HIT", "CACHE_MISS"],
+      "description": "Outcome of a data-store or cache operation."
+    },
+
+    "asyncOutcome": {
+      "type": "string",
+      "enum": ["SUCCESS", "FAILURE", "SKIPPED", "RETRIED", "DEAD_LETTERED"],
+      "description": "Outcome of async or event-driven message processing."
+    },
+
+    "businessOutcome": {
+      "type": "string",
+      "enum": ["SUCCESS", "FAILURE", "PARTIAL", "REJECTED", "DEFERRED"],
+      "description": "Outcome of a business-logic step or workflow node."
+    },
+
+    "errorEnvelopeProperties": {
+      "description": "Error context fields automatically appended to every WARN and ERROR event. The framework populates them from a Throwable when ArgusLogger.emit(event, throwable) is called.",
+      "properties": {
+        "exception.type": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Fully-qualified class name of the thrown exception (e.g. java.net.SocketTimeoutException). OTel exception semantic convention: exception.type."
+        },
+        "exception.message": {
+          "type": "string",
+          "maxLength": 4096,
+          "description": "Exception detail message from Throwable.getMessage(). OTel exception semantic convention: exception.message."
+        },
+        "exception.stacktrace": {
+          "type": "string",
+          "maxLength": 4096,
+          "description": "Full stack trace as a single string, truncated to maxLength when necessary. OTel exception semantic convention: exception.stacktrace."
+        },
+        "error.type": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Short error category for grouping and alerting (e.g. TimeoutError, ValidationError). OTel error.type semantic convention."
+        }
+      }
+    }
+  },
+
+  "type": "object",
+  "required": [
+    "timestamp",
+    "severity_number",
+    "severity_text",
+    "event_name",
+    "body",
+    "resource",
+    "attributes"
+  ],
+
+  "properties": {
+
+    "timestamp": {
+      "$ref": "#/$defs/otelTimestamp",
+      "description": "Nanosecond-precision timestamp at which the event was emitted. OTel Log Data Model: Timestamp."
+    },
+
+    "observed_timestamp": {
+      "$ref": "#/$defs/otelTimestamp",
+      "description": "Timestamp at which the OTel SDK observed the log record. May differ from timestamp when records are buffered. OTel Log Data Model: ObservedTimestamp."
+    },
+
+    "severity_number": {
+      "$ref": "#/$defs/severityNumber",
+      "description": "Numeric severity level. OTel Log Data Model: SeverityNumber."
+    },
+
+    "severity_text": {
+      "$ref": "#/$defs/severityText",
+      "description": "Human-readable severity label. OTel Log Data Model: SeverityText. Must be consistent with severity_number."
+    },
+
+    "trace_id": {
+      "$ref": "#/$defs/w3cTraceId",
+      "description": "W3C Trace Context trace-id. Present only when a span is active at emit time. OTel Log Data Model: TraceId."
+    },
+
+    "span_id": {
+      "$ref": "#/$defs/w3cSpanId",
+      "description": "W3C Trace Context parent-id (span-id) of the active span. OTel Log Data Model: SpanId."
+    },
+
+    "trace_flags": {
+      "$ref": "#/$defs/w3cTraceFlags",
+      "description": "W3C Trace Context trace-flags byte of the active span. OTel Log Data Model: TraceFlags."
+    },
+
+    "event_name": {
+      "$ref": "#/$defs/eventName",
+      "description": "Canonical event type identifier. Stored as the event.name attribute and mapped to the OTel LogRecord EventName field by collectors."
+    },
+
+    "body": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Rendered human-readable log message produced from the event body template. OTel Log Data Model: Body (AnyValue/string)."
+    },
+
+    "resource": {
+      "$ref": "#/$defs/resource"
+    },
+
+    "scope": {
+      "$ref": "#/$defs/instrumentationScope"
+    },
+
+    "attributes": {
+      "type": "object",
+      "description": "Event-specific OTel attributes. Attribute names follow OTel semantic conventions (dot-separated). Domain-specific required and optional fields are enforced by the event_name discriminator in the allOf conditions below.",
+      "additionalProperties": true
+    }
+  },
+
+  "allOf": [
+
+    {
+      "description": "W3C Trace Context constraint: trace_id and span_id must both be present or both be absent.",
+      "if": {
+        "required": ["trace_id"]
+      },
+      "then": {
+        "required": ["span_id"]
+      }
+    },
+    {
+      "if": {
+        "required": ["span_id"]
+      },
+      "then": {
+        "required": ["trace_id"]
+      }
+    },
+
+    {
+      "description": "Severity consistency: severity_number in the INFO band (9–12) requires severity_text to start with INFO.",
+      "if": {
+        "properties": {
+          "severity_number": { "minimum": 9, "maximum": 12 }
+        }
+      },
+      "then": {
+        "properties": {
+          "severity_text": { "pattern": "^INFO" }
+        }
+      }
+    },
+    {
+      "description": "Severity consistency: severity_number in the DEBUG band (5–8) requires severity_text to start with DEBUG.",
+      "if": {
+        "properties": {
+          "severity_number": { "minimum": 5, "maximum": 8 }
+        }
+      },
+      "then": {
+        "properties": {
+          "severity_text": { "pattern": "^DEBUG" }
+        }
+      }
+    },
+    {
+      "description": "Severity consistency: severity_number in the WARN band (13–16) requires severity_text to start with WARN.",
+      "if": {
+        "properties": {
+          "severity_number": { "minimum": 13, "maximum": 16 }
+        }
+      },
+      "then": {
+        "properties": {
+          "severity_text": { "pattern": "^WARN" }
+        }
+      }
+    },
+    {
+      "description": "Severity consistency: severity_number in the ERROR band (17–20) requires severity_text to start with ERROR.",
+      "if": {
+        "properties": {
+          "severity_number": { "minimum": 17, "maximum": 20 }
+        }
+      },
+      "then": {
+        "properties": {
+          "severity_text": { "pattern": "^ERROR" }
+        }
+      }
+    },
+
+    {
+      "description": "ERROR and WARN events: when error envelope fields are present, they must conform to the errorEnvelopeProperties schema.",
+      "if": {
+        "properties": {
+          "severity_number": { "minimum": 13 }
+        }
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "$ref": "#/$defs/errorEnvelopeProperties"
+          }
+        }
+      }
+    },
+
+    {
+      "description": "Domain: http.request.completed — inbound HTTP request completed normally (INFO).",
+      "if": {
+        "properties": { "event_name": { "const": "http.request.completed" } },
+        "required": ["event_name"]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "type": "object",
+            "required": [
+              "http.method",
+              "http.route",
+              "http.response.status_code",
+              "duration.ms",
+              "outcome"
+            ],
+            "properties": {
+              "http.method": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 10,
+                "description": "HTTP request method in uppercase (GET, POST, PUT, DELETE, etc.). OTel: http.request.method."
+              },
+              "http.route": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "description": "Matched route template (e.g. /users/{id}). OTel: http.route."
+              },
+              "http.response.status_code": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 599,
+                "description": "HTTP response status code. OTel: http.response.status_code."
+              },
+              "duration.ms": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "End-to-end request duration in milliseconds."
+              },
+              "outcome": {
+                "$ref": "#/$defs/httpOutcome"
+              },
+              "outcome.reason": {
+                "type": "string",
+                "maxLength": 512,
+                "description": "Optional human-readable explanation of the outcome."
+              }
+            }
+          }
+        }
+      }
+    },
+
+    {
+      "description": "Domain: http.client.request.completed — outbound HTTP call to an upstream service completed normally (INFO).",
+      "if": {
+        "properties": { "event_name": { "const": "http.client.request.completed" } },
+        "required": ["event_name"]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "type": "object",
+            "required": [
+              "http.method",
+              "server.address",
+              "http.route",
+              "http.response.status_code",
+              "duration.ms",
+              "outcome"
+            ],
+            "properties": {
+              "http.method": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 10,
+                "description": "HTTP request method. OTel: http.request.method."
+              },
+              "server.address": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "description": "Domain name or IP address of the upstream server. OTel: server.address."
+              },
+              "http.route": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "description": "URL path or route template of the upstream call. OTel: http.route."
+              },
+              "http.response.status_code": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 599,
+                "description": "HTTP response status code received from the upstream. OTel: http.response.status_code."
+              },
+              "duration.ms": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Round-trip request duration in milliseconds."
+              },
+              "outcome": {
+                "$ref": "#/$defs/httpOutcome"
+              },
+              "outcome.reason": {
+                "type": "string",
+                "maxLength": 512,
+                "description": "Optional explanation of the HTTP outcome."
+              }
+            }
+          }
+        }
+      }
+    },
+
+    {
+      "description": "Domain: http.request.failed — HTTP request failed with an unhandled exception or fatal error (ERROR). Requires error envelope.",
+      "if": {
+        "properties": { "event_name": { "const": "http.request.failed" } },
+        "required": ["event_name"]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "type": "object",
+            "required": [
+              "http.method",
+              "http.route",
+              "duration.ms",
+              "outcome",
+              "error.type"
+            ],
+            "properties": {
+              "http.method": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 10,
+                "description": "HTTP request method. OTel: http.request.method."
+              },
+              "http.route": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "description": "Matched route template. OTel: http.route."
+              },
+              "duration.ms": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Duration until failure in milliseconds."
+              },
+              "outcome": {
+                "$ref": "#/$defs/httpOutcome"
+              },
+              "error.type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Short error category for alerting (e.g. TimeoutError, InternalError). OTel: error.type."
+              },
+              "exception.type": {
+                "type": "string",
+                "maxLength": 256,
+                "description": "FQCN of the thrown exception. OTel exception convention: exception.type."
+              },
+              "exception.message": {
+                "type": "string",
+                "maxLength": 4096,
+                "description": "Exception detail message. OTel exception convention: exception.message."
+              },
+              "exception.stacktrace": {
+                "type": "string",
+                "maxLength": 4096,
+                "description": "Full stack trace string. OTel exception convention: exception.stacktrace."
+              }
+            }
+          }
+        }
+      }
+    },
+
+    {
+      "description": "Domain: db.operation.executed — database query or command executed (DEBUG).",
+      "if": {
+        "properties": { "event_name": { "const": "db.operation.executed" } },
+        "required": ["event_name"]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "type": "object",
+            "required": [
+              "db.operation.name",
+              "db.collection.name",
+              "duration.ms",
+              "outcome"
+            ],
+            "properties": {
+              "db.operation.name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "description": "Database operation name (SELECT, INSERT, UPDATE, DELETE, FIND, etc.). OTel: db.operation.name."
+              },
+              "db.collection.name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Table, collection, or key-space being accessed. OTel: db.collection.name."
+              },
+              "duration.ms": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Query execution duration in milliseconds."
+              },
+              "outcome": {
+                "$ref": "#/$defs/dataOutcome"
+              },
+              "rows.affected": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Number of rows or documents affected or returned."
+              },
+              "db.system": {
+                "type": "string",
+                "maxLength": 64,
+                "description": "Database technology identifier (postgresql, mysql, mongodb, redis). OTel: db.system."
+              },
+              "db.namespace": {
+                "type": "string",
+                "maxLength": 128,
+                "description": "Database name or schema. OTel: db.namespace."
+              },
+              "outcome.reason": {
+                "type": "string",
+                "maxLength": 512,
+                "description": "Optional explanation of the data outcome."
+              }
+            }
+          }
+        }
+      }
+    },
+
+    {
+      "description": "Domain: db.operation.failed — database operation failed with an unhandled exception (ERROR). Requires error envelope.",
+      "if": {
+        "properties": { "event_name": { "const": "db.operation.failed" } },
+        "required": ["event_name"]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "type": "object",
+            "required": [
+              "db.operation.name",
+              "db.collection.name",
+              "error.type"
+            ],
+            "properties": {
+              "db.operation.name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "description": "Database operation that failed. OTel: db.operation.name."
+              },
+              "db.collection.name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Target table or collection. OTel: db.collection.name."
+              },
+              "error.type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Short error category (e.g. ConnectionFailure, QueryTimeout). OTel: error.type."
+              },
+              "db.system": {
+                "type": "string",
+                "maxLength": 64,
+                "description": "Database technology identifier. OTel: db.system."
+              },
+              "db.namespace": {
+                "type": "string",
+                "maxLength": 128,
+                "description": "Database name or schema. OTel: db.namespace."
+              },
+              "exception.type": {
+                "type": "string",
+                "maxLength": 256,
+                "description": "FQCN of the thrown exception. OTel exception convention: exception.type."
+              },
+              "exception.message": {
+                "type": "string",
+                "maxLength": 4096,
+                "description": "Exception detail message. OTel exception convention: exception.message."
+              },
+              "exception.stacktrace": {
+                "type": "string",
+                "maxLength": 4096,
+                "description": "Full stack trace string. OTel exception convention: exception.stacktrace."
+              }
+            }
+          }
+        }
+      }
+    },
+
+    {
+      "description": "Domain: cache.operation.result — cache read or write completed (DEBUG).",
+      "if": {
+        "properties": { "event_name": { "const": "cache.operation.result" } },
+        "required": ["event_name"]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "type": "object",
+            "required": [
+              "cache.operation",
+              "cache.key.prefix",
+              "outcome"
+            ],
+            "properties": {
+              "cache.operation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 16,
+                "description": "Cache operation type (GET, SET, DELETE, EVICT, etc.)."
+              },
+              "cache.key.prefix": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Key prefix or namespace used for the cache lookup. Logged as a prefix (not the full key) to avoid PII exposure."
+              },
+              "outcome": {
+                "$ref": "#/$defs/dataOutcome"
+              },
+              "duration.ms": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Cache operation duration in milliseconds."
+              }
+            }
+          }
+        }
+      }
+    },
+
+    {
+      "description": "Domain: async.event.processed — async message or domain event was processed (INFO).",
+      "if": {
+        "properties": { "event_name": { "const": "async.event.processed" } },
+        "required": ["event_name"]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "type": "object",
+            "required": [
+              "event.type",
+              "event.source",
+              "outcome"
+            ],
+            "properties": {
+              "event.type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Domain event type identifier (e.g. order.created, payment.processed). OTel CloudEvents: event.type."
+              },
+              "event.source": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Source service or system that produced the event. OTel CloudEvents: event.source."
+              },
+              "event.id": {
+                "type": "string",
+                "maxLength": 64,
+                "description": "Unique identifier of the event, if available. OTel CloudEvents: event.id."
+              },
+              "outcome": {
+                "$ref": "#/$defs/asyncOutcome"
+              },
+              "outcome.reason": {
+                "type": "string",
+                "maxLength": 512,
+                "description": "Optional explanation of the processing outcome."
+              },
+              "retry.count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Number of processing attempts made before this result, zero on first attempt."
+              },
+              "duration.ms": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Message processing duration in milliseconds."
+              },
+              "messaging.destination": {
+                "type": "string",
+                "maxLength": 256,
+                "description": "Queue, topic, or subscription from which the message was consumed. OTel: messaging.destination.name."
+              }
+            }
+          }
+        }
+      }
+    },
+
+    {
+      "description": "Domain: async.event.published — domain event was published to a message broker (INFO).",
+      "if": {
+        "properties": { "event_name": { "const": "async.event.published" } },
+        "required": ["event_name"]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "type": "object",
+            "required": [
+              "event.type",
+              "messaging.destination",
+              "outcome"
+            ],
+            "properties": {
+              "event.type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Domain event type identifier. OTel CloudEvents: event.type."
+              },
+              "event.id": {
+                "type": "string",
+                "maxLength": 64,
+                "description": "Unique identifier assigned to the published event. OTel CloudEvents: event.id."
+              },
+              "messaging.destination": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "description": "Queue, topic, or channel the event was published to. OTel: messaging.destination.name."
+              },
+              "outcome": {
+                "$ref": "#/$defs/asyncOutcome"
+              },
+              "outcome.reason": {
+                "type": "string",
+                "maxLength": 512,
+                "description": "Optional explanation of the publish outcome."
+              }
+            }
+          }
+        }
+      }
+    },
+
+    {
+      "description": "Domain: async.event.failed — async event could not be processed and will not be retried (ERROR). Requires error envelope.",
+      "if": {
+        "properties": { "event_name": { "const": "async.event.failed" } },
+        "required": ["event_name"]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "type": "object",
+            "required": [
+              "event.type",
+              "event.source",
+              "error.type"
+            ],
+            "properties": {
+              "event.type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Domain event type identifier. OTel CloudEvents: event.type."
+              },
+              "event.source": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Source system that produced the failed event. OTel CloudEvents: event.source."
+              },
+              "event.id": {
+                "type": "string",
+                "maxLength": 64,
+                "description": "Unique identifier of the failed event."
+              },
+              "retry.count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Total number of processing attempts made before the terminal failure."
+              },
+              "error.type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Short error category (e.g. DeserializationError, BusinessRuleViolation). OTel: error.type."
+              },
+              "exception.type": {
+                "type": "string",
+                "maxLength": 256,
+                "description": "FQCN of the thrown exception. OTel exception convention: exception.type."
+              },
+              "exception.message": {
+                "type": "string",
+                "maxLength": 4096,
+                "description": "Exception detail message. OTel exception convention: exception.message."
+              },
+              "exception.stacktrace": {
+                "type": "string",
+                "maxLength": 4096,
+                "description": "Full stack trace string. OTel exception convention: exception.stacktrace."
+              }
+            }
+          }
+        }
+      }
+    },
+
+    {
+      "description": "Domain: business.step.completed — named business-logic step or workflow node completed (INFO).",
+      "if": {
+        "properties": { "event_name": { "const": "business.step.completed" } },
+        "required": ["event_name"]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "type": "object",
+            "required": [
+              "step.name",
+              "flow.name",
+              "outcome"
+            ],
+            "properties": {
+              "step.name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Name of the business-logic step or processing node."
+              },
+              "flow.name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Name of the enclosing workflow or saga."
+              },
+              "entity.type": {
+                "type": "string",
+                "maxLength": 64,
+                "description": "Type of the business entity being processed (e.g. Order, Payment, User)."
+              },
+              "entity.id": {
+                "type": "string",
+                "maxLength": 64,
+                "description": "Identifier of the specific entity instance."
+              },
+              "outcome": {
+                "$ref": "#/$defs/businessOutcome"
+              },
+              "outcome.reason": {
+                "type": "string",
+                "maxLength": 512,
+                "description": "Optional explanation of the business outcome."
+              },
+              "duration.ms": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Step execution duration in milliseconds."
+              }
+            }
+          }
+        }
+      }
+    },
+
+    {
+      "description": "Domain: business.rule.evaluated — business rule or policy was evaluated (DEBUG).",
+      "if": {
+        "properties": { "event_name": { "const": "business.rule.evaluated" } },
+        "required": ["event_name"]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "type": "object",
+            "required": [
+              "rule.name",
+              "entity.type",
+              "entity.id",
+              "outcome"
+            ],
+            "properties": {
+              "rule.name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Name of the business rule or policy being evaluated."
+              },
+              "entity.type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "description": "Type of the entity the rule was evaluated against."
+              },
+              "entity.id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "description": "Identifier of the specific entity instance."
+              },
+              "outcome": {
+                "$ref": "#/$defs/businessOutcome"
+              },
+              "outcome.reason": {
+                "type": "string",
+                "maxLength": 512,
+                "description": "Optional explanation of the rule evaluation outcome."
+              }
+            }
+          }
+        }
+      }
+    },
+
+    {
+      "description": "Domain: business.step.failed — business-logic step failed with an unhandled exception (ERROR). Requires error envelope.",
+      "if": {
+        "properties": { "event_name": { "const": "business.step.failed" } },
+        "required": ["event_name"]
+      },
+      "then": {
+        "properties": {
+          "attributes": {
+            "type": "object",
+            "required": [
+              "step.name",
+              "flow.name",
+              "error.type"
+            ],
+            "properties": {
+              "step.name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Name of the failed business-logic step."
+              },
+              "flow.name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Name of the enclosing workflow or saga."
+              },
+              "entity.type": {
+                "type": "string",
+                "maxLength": 64,
+                "description": "Type of the business entity being processed when the failure occurred."
+              },
+              "entity.id": {
+                "type": "string",
+                "maxLength": 64,
+                "description": "Identifier of the specific entity instance."
+              },
+              "error.type": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "description": "Short error category (e.g. ValidationError, IntegrationError). OTel: error.type."
+              },
+              "exception.type": {
+                "type": "string",
+                "maxLength": 256,
+                "description": "FQCN of the thrown exception. OTel exception convention: exception.type."
+              },
+              "exception.message": {
+                "type": "string",
+                "maxLength": 4096,
+                "description": "Exception detail message. OTel exception convention: exception.message."
+              },
+              "exception.stacktrace": {
+                "type": "string",
+                "maxLength": 4096,
+                "description": "Full stack trace string. OTel exception convention: exception.stacktrace."
+              }
+            }
+          }
+        }
+      }
+    }
+
+  ],
+
+  "examples": [
+    {
+      "_comment": "Example: http.request.completed (INFO, with active trace)",
+      "timestamp": "2024-01-15T10:30:00.123456789Z",
+      "observed_timestamp": "2024-01-15T10:30:00.123500000Z",
+      "severity_number": 9,
+      "severity_text": "INFO",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "00f067aa0ba902b7",
+      "trace_flags": 1,
+      "event_name": "http.request.completed",
+      "body": "GET /api/users/{id} -> 200 [SUCCESS] in 45ms",
+      "resource": {
+        "service.name": "user-service",
+        "service.version": "2.3.1",
+        "deployment.environment.name": "production"
+      },
+      "scope": {
+        "name": "com.argus.logging",
+        "version": "1.0"
+      },
+      "attributes": {
+        "http.method": "GET",
+        "http.route": "/api/users/{id}",
+        "http.response.status_code": 200,
+        "duration.ms": 45,
+        "outcome": "SUCCESS"
+      }
+    },
+    {
+      "_comment": "Example: db.operation.failed (ERROR, with full error envelope)",
+      "timestamp": "2024-01-15T10:31:05.987654321Z",
+      "observed_timestamp": "2024-01-15T10:31:05.987700000Z",
+      "severity_number": 17,
+      "severity_text": "ERROR",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "a2fb4a1d1a96d312",
+      "trace_flags": 1,
+      "event_name": "db.operation.failed",
+      "body": "SELECT on users FAILED — ConnectionFailure",
+      "resource": {
+        "service.name": "user-service",
+        "service.version": "2.3.1",
+        "deployment.environment.name": "production"
+      },
+      "scope": {
+        "name": "com.argus.logging",
+        "version": "1.0"
+      },
+      "attributes": {
+        "db.operation.name": "SELECT",
+        "db.collection.name": "users",
+        "db.system": "postgresql",
+        "db.namespace": "userdb",
+        "error.type": "ConnectionFailure",
+        "exception.type": "org.postgresql.util.PSQLException",
+        "exception.message": "Connection to localhost:5432 refused. Check that the hostname and port are correct and that the postmaster is accepting TCP/IP connections.",
+        "exception.stacktrace": "org.postgresql.util.PSQLException: Connection to localhost:5432 refused...\n\tat org.postgresql.core.v3.ConnectionFactoryImpl.openConnectionImpl(ConnectionFactoryImpl.java:285)"
+      }
+    },
+    {
+      "_comment": "Example: async.event.processed (INFO, no active trace)",
+      "timestamp": "2024-01-15T10:32:00.000000000Z",
+      "severity_number": 9,
+      "severity_text": "INFO",
+      "event_name": "async.event.processed",
+      "body": "Event order.created [evt-abc123] from order-service -> SUCCESS",
+      "resource": {
+        "service.name": "fulfillment-service",
+        "service.version": "1.0.0",
+        "deployment.environment.name": "staging"
+      },
+      "scope": {
+        "name": "com.argus.logging",
+        "version": "1.0"
+      },
+      "attributes": {
+        "event.type": "order.created",
+        "event.source": "order-service",
+        "event.id": "evt-abc123",
+        "outcome": "SUCCESS",
+        "retry.count": 0,
+        "duration.ms": 12,
+        "messaging.destination": "orders.created.queue"
+      }
+    },
+    {
+      "_comment": "Example: business.step.failed (ERROR)",
+      "timestamp": "2024-01-15T10:33:15.111222333Z",
+      "severity_number": 17,
+      "severity_text": "ERROR",
+      "event_name": "business.step.failed",
+      "body": "Step [validate-payment] in flow [checkout] FAILED — ValidationError",
+      "resource": {
+        "service.name": "checkout-service",
+        "service.version": "3.1.0",
+        "deployment.environment.name": "production"
+      },
+      "attributes": {
+        "step.name": "validate-payment",
+        "flow.name": "checkout",
+        "entity.type": "Order",
+        "entity.id": "ord-99887766",
+        "error.type": "ValidationError",
+        "exception.type": "com.example.checkout.PaymentValidationException",
+        "exception.message": "Card expiry date is in the past"
+      }
+    }
+  ]
+}
