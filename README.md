@@ -15,6 +15,7 @@ At runtime records are emitted via the OTel SDK — to an OTLP collector in prod
 | `argus-tracing` | Tracing facade — `ArgusTracer`, `ArgusSpan`, `ArgusAgent` |
 | `argus-tracing-agent` | Fat Java agent JAR — zero-code transparent tracing via `-javaagent` |
 | `argus-logging-example` | Runnable demo of all log event types |
+| [`argus-node`](./argus-node/README.md) | Argus for Node.js — contract-enforced OTel logging (TypeScript, AsyncLocalStorage, Worker Threads, PII masking) |
 
 ---
 
